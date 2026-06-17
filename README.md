@@ -48,7 +48,7 @@ Run these steps in order.
 1. Clone and enter the repository.
 
 ```bash
-git clone https://github.com/<org>/smart-agri-marketplace.git
+git clone https://github.com/nattytesfa/smart-agri-marketplace.git
 cd smart-agri-marketplace
 ```
 
@@ -180,7 +180,6 @@ flutter pub get
 
 ## Reference Links
 
-- Full SRS / design docs: [docs](./docs)
 - Architecture, DB schema, API table, build phases: [docs/implementation_guide.md](./docs/implementation_guide.md)
-- Task board: add your GitHub Projects/Trello link
-- Team chat: add your Telegram/WhatsApp/Slack link
+- Task board: [https://github.com/nattytesfa/smart-agri-marketplace](https://github.com/nattytesfa/smart-agri-marketplace)
+- Team chat: [Telegram Group](https://t.me/c/3235985205/3)
