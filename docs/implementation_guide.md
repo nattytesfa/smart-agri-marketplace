@@ -46,44 +46,204 @@ mobile/
 ├── android/
 ├── assets/
 │   ├── images/
-│   ├── icons/                  # icon-driven UI assets (literacy-friendly)
+│   │   ├── app_logo.png
+│   │   ├── splash_illustration.png
+│   │   └── onboarding_illustration_1.png … _3.png
+│   ├── icons/                              # icon-driven UI assets (literacy-friendly)
+│   │   ├── crop_maize.png
+│   │   ├── crop_teff.png
+│   │   ├── crop_wheat.png
+│   │   ├── crop_coffee.png
+│   │   ├── storage_gotera.png
+│   │   └── storage_modern.png
 │   └── lang/
-│       ├── am.json             # Amharic
-│       ├── om.json             # Afaan Oromoo
+│       ├── am.json                          # Amharic
+│       ├── om.json                           # Afaan Oromoo
 │       └── en.json
 ├── lib/
 │   ├── main.dart
-│   ├── app.dart                # MaterialApp, routing, theme wiring
+│   ├── app.dart                              # MaterialApp, routing, theme wiring
 │   ├── core/
-│   │   ├── config/             # env constants, API base URLs
-│   │   ├── network/            # dio client, interceptors, connectivity_plus checks
-│   │   ├── localization/       # easy_localization setup
-│   │   ├── routing/            # go_router definitions
-│   │   ├── theme/              # colors, icon-centric design tokens
-│   │   └── widgets/            # shared buttons, icon nav, status chips
+│   │   ├── config/
+│   │   │   ├── app_constants.dart
+│   │   │   ├── api_endpoints.dart
+│   │   │   └── env_config.dart
+│   │   ├── network/
+│   │   │   ├── dio_client.dart
+│   │   │   ├── api_interceptor.dart
+│   │   │   ├── connectivity_service.dart
+│   │   │   └── network_exceptions.dart
+│   │   ├── localization/
+│   │   │   └── localization_setup.dart
+│   │   ├── routing/
+│   │   │   ├── app_router.dart
+│   │   │   └── route_names.dart
+│   │   ├── theme/
+│   │   │   ├── app_theme.dart
+│   │   │   ├── app_colors.dart
+│   │   │   └── app_text_styles.dart
+│   │   └── widgets/
+│   │       ├── primary_button.dart
+│   │       ├── icon_nav_bar.dart
+│   │       ├── status_chip.dart
+│   │       ├── loading_indicator.dart
+│   │       ├── language_selector.dart
+│   │       └── app_text_field.dart
 │   ├── data/
-│   │   ├── local/              # Hive boxes + adapters (offline cache)
-│   │   ├── remote/             # Supabase client + REST API clients
-│   │   ├── models/             # DTOs matching the data dictionary
-│   │   └── repositories/       # merges local + remote, exposes clean API to BLoCs
+│   │   ├── local/
+│   │   │   ├── hive_boxes.dart
+│   │   │   ├── listing_hive_model.dart      # + listing_hive_model.g.dart (generated)
+│   │   │   ├── user_hive_model.dart          # + user_hive_model.g.dart (generated)
+│   │   │   └── sync_queue_box.dart
+│   │   ├── remote/
+│   │   │   ├── supabase_client.dart
+│   │   │   ├── auth_api.dart
+│   │   │   ├── listings_api.dart
+│   │   │   ├── debo_api.dart
+│   │   │   ├── transactions_api.dart
+│   │   │   ├── advisory_api.dart
+│   │   │   ├── traceability_api.dart
+│   │   │   └── subscriptions_api.dart
+│   │   ├── models/
+│   │   │   ├── user_model.dart
+│   │   │   ├── farmer_profile_model.dart
+│   │   │   ├── buyer_profile_model.dart
+│   │   │   ├── listing_model.dart
+│   │   │   ├── debo_batch_model.dart
+│   │   │   ├── transaction_model.dart
+│   │   │   ├── advisory_model.dart
+│   │   │   └── subscription_model.dart
+│   │   └── repositories/
+│   │       ├── auth_repository.dart
+│   │       ├── listing_repository.dart
+│   │       ├── debo_repository.dart
+│   │       ├── transaction_repository.dart
+│   │       ├── advisory_repository.dart
+│   │       ├── traceability_repository.dart
+│   │       └── subscription_repository.dart
 │   ├── features/
-│   │   ├── auth/               # phone signup, Fayda verification, login
-│   │   ├── listings/           # create/edit/search produce listings
-│   │   ├── digital_debo/       # view/join aggregated batches
-│   │   ├── transactions_escrow/         # payment initiation, escrow status
-│   │   ├── traceability_qr/             # QR generation (farmer) + scan (buyer)
-│   │   ├── advisory/                    # weather + sell/hold recommendations
-│   │   ├── subscriptions/               # free/premium plan management
-│   │   └── profile/                     # trust score, farm details
-│   │       each feature folder contains: bloc/, presentation/ (screens, widgets)
+│   │   ├── auth/
+│   │   │   ├── bloc/
+│   │   │   │   ├── auth_bloc.dart
+│   │   │   │   ├── auth_event.dart
+│   │   │   │   └── auth_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── splash_screen.dart
+│   │   │       │   ├── language_select_screen.dart
+│   │   │       │   ├── phone_register_screen.dart
+│   │   │       │   ├── otp_verification_screen.dart
+│   │   │       │   ├── fayda_verification_screen.dart
+│   │   │       │   └── login_screen.dart
+│   │   │       └── widgets/
+│   │   │           ├── otp_input_field.dart
+│   │   │           └── role_selector_card.dart
+│   │   ├── listings/
+│   │   │   ├── bloc/
+│   │   │   │   ├── listing_bloc.dart
+│   │   │   │   ├── listing_event.dart
+│   │   │   │   └── listing_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── listing_list_screen.dart
+│   │   │       │   ├── listing_create_screen.dart
+│   │   │       │   ├── listing_detail_screen.dart
+│   │   │       │   └── listing_edit_screen.dart
+│   │   │       └── widgets/
+│   │   │           ├── listing_card.dart
+│   │   │           ├── crop_type_picker.dart
+│   │   │           ├── quantity_price_input.dart
+│   │   │           └── location_picker_map.dart
+│   │   ├── digital_debo/
+│   │   │   ├── bloc/
+│   │   │   │   ├── debo_bloc.dart
+│   │   │   │   ├── debo_event.dart
+│   │   │   │   └── debo_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── debo_batch_list_screen.dart
+│   │   │       │   ├── debo_batch_detail_screen.dart
+│   │   │       │   └── debo_join_confirmation_screen.dart
+│   │   │       └── widgets/
+│   │   │           ├── batch_progress_bar.dart
+│   │   │           └── batch_map_view.dart
+│   │   ├── transactions_escrow/
+│   │   │   ├── bloc/
+│   │   │   │   ├── transaction_bloc.dart
+│   │   │   │   ├── transaction_event.dart
+│   │   │   │   └── transaction_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── payment_method_screen.dart
+│   │   │       │   ├── escrow_status_screen.dart
+│   │   │       │   └── transaction_history_screen.dart
+│   │   │       └── widgets/
+│   │   │           ├── escrow_status_badge.dart
+│   │   │           └── payment_method_tile.dart
+│   │   ├── traceability_qr/
+│   │   │   ├── bloc/
+│   │   │   │   ├── qr_bloc.dart
+│   │   │   │   ├── qr_event.dart
+│   │   │   │   └── qr_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── qr_generate_screen.dart
+│   │   │       │   ├── qr_scan_screen.dart
+│   │   │       │   └── traceability_result_screen.dart
+│   │   │       └── widgets/
+│   │   │           ├── qr_display_widget.dart
+│   │   │           └── scanner_overlay.dart
+│   │   ├── advisory/
+│   │   │   ├── bloc/
+│   │   │   │   ├── advisory_bloc.dart
+│   │   │   │   ├── advisory_event.dart
+│   │   │   │   └── advisory_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── weather_forecast_screen.dart
+│   │   │       │   ├── sell_or_hold_screen.dart
+│   │   │       │   └── price_trend_screen.dart
+│   │   │       └── widgets/
+│   │   │           ├── forecast_card.dart
+│   │   │           ├── recommendation_banner.dart
+│   │   │           └── price_chart.dart
+│   │   ├── subscriptions/
+│   │   │   ├── bloc/
+│   │   │   │   ├── subscription_bloc.dart
+│   │   │   │   ├── subscription_event.dart
+│   │   │   │   └── subscription_state.dart
+│   │   │   └── presentation/
+│   │   │       ├── screens/
+│   │   │       │   ├── plan_selection_screen.dart
+│   │   │       │   └── subscription_status_screen.dart
+│   │   │       └── widgets/
+│   │   │           └── plan_card.dart
+│   │   └── profile/
+│   │       ├── bloc/
+│   │       │   ├── profile_bloc.dart
+│   │       │   ├── profile_event.dart
+│   │       │   └── profile_state.dart
+│   │       └── presentation/
+│   │           ├── screens/
+│   │           │   ├── profile_screen.dart
+│   │           │   ├── edit_profile_screen.dart
+│   │           │   └── trust_score_detail_screen.dart
+│   │           └── widgets/
+│   │               └── trust_score_gauge.dart
 │   ├── services/
-│   │   ├── sync_service.dart           # background Hive → Postgres reconciliation
-│   │   ├── location_service.dart       # GPS capture for listings
-│   │   ├── qr_service.dart             # generate/scan QR tokens
-│   │   ├── notification_service.dart   # push + offline SMS fallback awareness
-│   │   └── recommendation_service.dart     # TFLite model inference wrapper
-│   └── di/                                 # get_it service locator
+│   │   ├── sync_service.dart                # background Hive → Postgres reconciliation
+│   │   ├── location_service.dart             # GPS capture for listings
+│   │   ├── qr_service.dart                    # generate/scan QR tokens
+│   │   ├── notification_service.dart           # push + offline SMS fallback awareness
+│   │   └── recommendation_service.dart          # TFLite model inference wrapper
+│   └── di/
+│       └── service_locator.dart
 ├── test/
+│   ├── features/
+│   │   ├── auth_bloc_test.dart
+│   │   └── listing_bloc_test.dart
+│   └── data/
+│       └── listing_repository_test.dart
 ├── pubspec.yaml
 └── README.md
 ```
@@ -97,40 +257,91 @@ Key pubspec.yaml dependencies to add:
 backend/
 ├── src/
 │   ├── server.js
-│   ├── app.js                       # Express app, middleware wiring
+│   ├── app.js                                  # Express app, middleware wiring
 │   ├── config/
 │   │   ├── env.js
-│   │   ├── db.js                    # pg pool for raw PostGIS queries
-│   │   └── supabaseClient.js        # service-role client
+│   │   ├── db.js                                # pg pool for raw PostGIS queries
+│   │   ├── supabaseClient.js                     # service-role client
+│   │   └── logger.js                              # winston config
 │   ├── middleware/
-│   │   ├── auth.js                  # JWT verification
-│   │   ├── rbac.js                  # role checks (Farmer/Buyer/DA/Admin)
+│   │   ├── auth.js                                 # JWT verification
+│   │   ├── rbac.js                                  # role checks (Farmer/Buyer/DA/Admin)
 │   │   ├── errorHandler.js
-│   │   └── rateLimiter.js
+│   │   ├── rateLimiter.js
+│   │   └── validateRequest.js
 │   ├── modules/
-│   │   ├── users/                   # registration, profile, trust score
-│   │   ├── listings/                # CRUD + geospatial search
-│   │   ├── digitalDebo/             # spatial clustering algorithm
+│   │   ├── users/
+│   │   │   ├── user.routes.js
+│   │   │   ├── user.controller.js
+│   │   │   └── user.service.js
+│   │   ├── listings/
+│   │   │   ├── listing.routes.js
+│   │   │   ├── listing.controller.js
+│   │   │   └── listing.service.js
+│   │   ├── digitalDebo/
+│   │   │   ├── debo.routes.js
+│   │   │   ├── debo.controller.js
+│   │   │   ├── debo.service.js
+│   │   │   └── clustering.util.js                  # spatial clustering algorithm
 │   │   ├── transactionsEscrow/
+│   │   │   ├── transaction.routes.js
+│   │   │   ├── transaction.controller.js
+│   │   │   ├── transaction.service.js
 │   │   │   ├── telebirr.integration.js
 │   │   │   └── cbeBirr.integration.js
-│   │   ├── traceabilityQr/                 # token + QR generation/verification
+│   │   ├── traceabilityQr/
+│   │   │   ├── traceability.routes.js
+│   │   │   ├── traceability.controller.js
+│   │   │   ├── traceability.service.js
+│   │   │   └── qrToken.util.js
 │   │   ├── advisory/
+│   │   │   ├── advisory.routes.js
+│   │   │   ├── advisory.controller.js
+│   │   │   ├── advisory.service.js
 │   │   │   ├── nma.integration.js
 │   │   │   └── nmis.integration.js
 │   │   ├── subscriptions/
+│   │   │   ├── subscription.routes.js
+│   │   │   ├── subscription.controller.js
+│   │   │   ├── subscription.service.js
 │   │   │   └── smsGateway.integration.js
-│   │   ├── admin/                          # analytics, heatmaps, moderation
-│   │   └── sync/                           # bulk Hive batch ingestion endpoint
+│   │   ├── admin/
+│   │   │   ├── admin.routes.js
+│   │   │   ├── admin.controller.js
+│   │   │   └── admin.service.js
+│   │   └── sync/
+│   │       ├── sync.routes.js
+│   │       ├── sync.controller.js
+│   │       └── sync.service.js
 │   ├── integrations/
-│   │   └── fayda/                          # KYC verification client
-│   ├── jobs/                               # node-cron: price ingestion, advisory generation
+│   │   └── fayda/
+│   │       ├── fayda.client.js
+│   │       └── fayda.util.js
+│   ├── jobs/
+│   │   ├── priceIngestionJob.js                     # node-cron: pulls NMIS prices
+│   │   ├── advisoryGenerationJob.js                  # node-cron: generates sell/hold advice
+│   │   └── syncRetryJob.js                            # retries failed mobile sync batches
 │   ├── utils/
-│   └── validators/                         # express-validator schemas
+│   │   ├── asyncHandler.js
+│   │   ├── apiResponse.js
+│   │   └── geoUtils.js
+│   └── validators/
+│       ├── user.validator.js
+│       ├── listing.validator.js
+│       ├── transaction.validator.js
+│       └── subscription.validator.js
 ├── db/
 │   ├── migrations/
+│   │   ├── 001_initial_schema.sql
+│   │   └── 002_row_level_security.sql
 │   └── seed/
+│       ├── seed_users.sql
+│       └── seed_listings.sql
 ├── tests/
+│   ├── user.test.js
+│   ├── listing.test.js
+│   ├── debo.test.js
+│   └── transaction.test.js
 ├── .env.example
 ├── package.json
 └── README.md
@@ -143,21 +354,44 @@ Key package.json dependencies: `express`, `@supabase/supabase-js`, `pg`, `jsonwe
 ```
 admin-web/
 ├── public/
+│   ├── favicon.ico
+│   └── logo.svg
 ├── src/
 │   ├── app/
 │   │   ├── login/
+│   │   │   └── page.tsx
 │   │   ├── dashboard/
-│   │   ├── users/                  # verification queue
+│   │   │   └── page.tsx
+│   │   ├── users/
+│   │   │   ├── page.tsx                       # verification queue
+│   │   │   └── [id]/
+│   │   │       └── page.tsx                    # individual user detail/verify
 │   │   ├── listings/
-│   │   ├── transactions/           # escrow monitoring
-│   │   ├── analytics-heatmap/      # PostGIS-driven regional map
+│   │   │   └── page.tsx
+│   │   ├── transactions/
+│   │   │   └── page.tsx                        # escrow monitoring
+│   │   ├── analytics-heatmap/
+│   │   │   └── page.tsx                         # PostGIS-driven regional map
 │   │   └── subscriptions/
+│   │       └── page.tsx
 │   ├── components/
+│   │   ├── Sidebar.tsx
+│   │   ├── Topbar.tsx
+│   │   ├── DataTable.tsx
+│   │   ├── StatusBadge.tsx
+│   │   ├── MapHeatmap.tsx
+│   │   └── ConfirmDialog.tsx
 │   ├── lib/
 │   │   ├── supabaseClient.ts
-│   │   └── apiClient.ts            # talks to backend for admin actions
+│   │   ├── apiClient.ts                          # talks to backend for admin actions
+│   │   └── authHelpers.ts
 │   ├── hooks/
+│   │   ├── useAuth.ts
+│   │   ├── useUsers.ts
+│   │   ├── useListings.ts
+│   │   └── useTransactions.ts
 │   └── styles/
+│       └── globals.css
 ├── package.json
 └── README.md
 ```
