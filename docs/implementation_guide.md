@@ -100,17 +100,17 @@ backend/
 │   ├── app.js                       # Express app, middleware wiring
 │   ├── config/
 │   │   ├── env.js
-│   │   ├── db.js                     # pg pool for raw PostGIS queries
-│   │   └── supabaseClient.js          # service-role client
+│   │   ├── db.js                    # pg pool for raw PostGIS queries
+│   │   └── supabaseClient.js        # service-role client
 │   ├── middleware/
-│   │   ├── auth.js                     # JWT verification
-│   │   ├── rbac.js                      # role checks (Farmer/Buyer/DA/Admin)
+│   │   ├── auth.js                  # JWT verification
+│   │   ├── rbac.js                  # role checks (Farmer/Buyer/DA/Admin)
 │   │   ├── errorHandler.js
 │   │   └── rateLimiter.js
 │   ├── modules/
-│   │   ├── users/                       # registration, profile, trust score
-│   │   ├── listings/                     # CRUD + geospatial search
-│   │   ├── digitalDebo/                   # spatial clustering algorithm
+│   │   ├── users/                   # registration, profile, trust score
+│   │   ├── listings/                # CRUD + geospatial search
+│   │   ├── digitalDebo/             # spatial clustering algorithm
 │   │   ├── transactionsEscrow/
 │   │   │   ├── telebirr.integration.js
 │   │   │   └── cbeBirr.integration.js
@@ -120,13 +120,13 @@ backend/
 │   │   │   └── nmis.integration.js
 │   │   ├── subscriptions/
 │   │   │   └── smsGateway.integration.js
-│   │   ├── admin/                            # analytics, heatmaps, moderation
-│   │   └── sync/                               # bulk Hive batch ingestion endpoint
+│   │   ├── admin/                          # analytics, heatmaps, moderation
+│   │   └── sync/                           # bulk Hive batch ingestion endpoint
 │   ├── integrations/
-│   │   └── fayda/                                # KYC verification client
-│   ├── jobs/                                       # node-cron: price ingestion, advisory generation
+│   │   └── fayda/                          # KYC verification client
+│   ├── jobs/                               # node-cron: price ingestion, advisory generation
 │   ├── utils/
-│   └── validators/                                   # express-validator schemas
+│   └── validators/                         # express-validator schemas
 ├── db/
 │   ├── migrations/
 │   └── seed/
@@ -149,13 +149,13 @@ admin-web/
 │   │   ├── dashboard/
 │   │   ├── users/                  # verification queue
 │   │   ├── listings/
-│   │   ├── transactions/             # escrow monitoring
-│   │   ├── analytics-heatmap/         # PostGIS-driven regional map
+│   │   ├── transactions/           # escrow monitoring
+│   │   ├── analytics-heatmap/      # PostGIS-driven regional map
 │   │   └── subscriptions/
 │   ├── components/
 │   ├── lib/
 │   │   ├── supabaseClient.ts
-│   │   └── apiClient.ts                # talks to backend for admin actions
+│   │   └── apiClient.ts            # talks to backend for admin actions
 │   ├── hooks/
 │   └── styles/
 ├── package.json
