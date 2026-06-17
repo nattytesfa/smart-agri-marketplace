@@ -1,0 +1,69 @@
+# Environment Variables (CRITICAL)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.production
+*.env
+*.env.*
+
+# Keep the example files
+!.env.example
+!mobile/.env.example
+!backend/.env.example
+!admin-web/.env.example
+
+# OS / System
+.DS_Store
+Thumbs.db
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.suo
+*.orig
+
+# --- Mobile (Flutter/Dart) ---
+*/.dart_tool/
+*/.packages
+*/build/
+*/.flutter-plugins
+*/.flutter-plugins-dependencies
+*/.pub-cache/
+*/.pub/
+*/android/key.properties
+*/ios/**/*.xcworkspace
+*/ios/**/*.xcodeproj
+*/ios/Flutter/App.framework
+*/ios/Flutter/Flutter.framework
+*/ios/Flutter/Flutter.podspec
+*/ios/Flutter/Generated.xcconfig
+*/ios/Flutter/app.flx
+*/ios/Flutter/app.zip
+*/ios/Flutter/flutter_assets/
+*/ios/Flutter/flutter_export_environment.sh
+*/ios/ServiceDefinitions.json
+*/ios/Runner/GeneratedPluginRegistrant.*
+
+# --- Backend & Admin Web (Node.js/Next.js) ---
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+pnpm-debug.log
+.pnpm-store/
+
+# Next.js build output
+.next/
+out/
+
+# Testing and coverage
+coverage/
+.nyc_output/
+
+# Build directories
+dist/
+lib-cov/
