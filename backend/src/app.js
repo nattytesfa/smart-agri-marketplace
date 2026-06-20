@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const errorHandler = require('./middleware/errorHandler');
 const rateLimiter = require('./middleware/rateLimiter');
 const userRoutes = require('./modules/users/users.routes');
+const listingRoutes = require('./modules/listings/listing.routes');
 
 const app = express();
 
@@ -22,5 +23,7 @@ app.use('/api/auth', userRoutes);
 
 // Global error handler
 app.use(errorHandler);
+
+app.use('/api/listings', listingRoutes);
 
 module.exports = app;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:smart_agri_marketplace/features/listings/presentation/screens/listing_create_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -17,6 +18,17 @@ class HomeScreen extends StatelessWidget {
           style: TextStyle(fontSize: 20),
           textAlign: TextAlign.center,
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (context) => const ListingCreateScreen()),
+          );
+        },
+        backgroundColor: Colors.green,
+        child: const Icon(Icons.add),
       ),
     );
   }
