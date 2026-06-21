@@ -5,7 +5,7 @@ const errorHandler = require('./middleware/errorHandler');
 const rateLimiter = require('./middleware/rateLimiter');
 const userRoutes = require('./modules/users/users.routes');
 const listingRoutes = require('./modules/listings/listing.routes');
-
+const deboRoutes = require('./modules/digitalDebo/debo.routes');
 const app = express();
 
 app.use(helmet());
@@ -25,5 +25,5 @@ app.use('/api/auth', userRoutes);
 app.use(errorHandler);
 
 app.use('/api/listings', listingRoutes);
-
+app.use('/api/debo', deboRoutes);
 module.exports = app;

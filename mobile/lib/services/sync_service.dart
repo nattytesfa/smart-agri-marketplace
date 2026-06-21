@@ -12,11 +12,12 @@ class SyncService {
 
   Future<void> syncListings() async {
     // Check connectivity
-final List<ConnectivityResult> connectivity = await Connectivity().checkConnectivity();
-if (connectivity.contains(ConnectivityResult.none)) {
-  debugPrint('No internet, skip sync');
-  return;
-}
+    final List<ConnectivityResult> connectivity =
+        await Connectivity().checkConnectivity();
+    if (connectivity.contains(ConnectivityResult.none)) {
+      debugPrint('No internet, skip sync');
+      return;
+    }
 
     // Get token
     final token = await _storage.read(key: 'supabase_token');
@@ -29,7 +30,8 @@ if (connectivity.contains(ConnectivityResult.none)) {
 
     // Get listings with sync_status = 'local'
     final box = Hive.box<ListingModel>('listings');
-    final localListings = box.values.where((l) => l.syncStatus == 'local').toList();
+    final localListings =
+        box.values.where((l) => l.syncStatus == 'local').toList();
 
     if (localListings.isEmpty) {
       if (kDebugMode) {
