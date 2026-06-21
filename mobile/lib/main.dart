@@ -1,13 +1,14 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:smart_agri_marketplace/screens/role_based_home_screen.dart';
 import 'package:smart_agri_marketplace/services/sync_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'data/models/listing_model.dart';
-import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/role_selection_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,7 +51,13 @@ class MyApp extends StatelessWidget {
           : '/login',
       routes: {
         '/login': (context) => const LoginScreen(),
-        '/home': (context) => const HomeScreen(),
+        '/home': (context) => const RoleBasedHomeScreen(),
+        '/role_selection': (context) {
+          final session = Supabase.instance.client.auth.currentSession;
+          final phone = session?.user.phone ?? '';
+          final token = session?.accessToken ?? '';
+          return RoleSelectionScreen(phone: phone, token: token);
+        },
       },
     );
   }

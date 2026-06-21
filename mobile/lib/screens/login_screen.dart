@@ -1,8 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'role_selection_screen.dart'; // We'll create this next
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -77,12 +78,29 @@ class _LoginScreenState extends State<LoginScreen> {
       final token = response.session?.accessToken;
       if (token == null) throw 'Failed to get access token';
 
+      // Store token securely
       await _storage.write(key: 'supabase_token', value: token);
 
-      await _registerUser(token, phone);
+      // Check if user already exists in our database
+      final existingUser = await _checkExistingUser(token);
+      if (existingUser == true) {
+        // User already registered → go directly to home
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/home');
+        return;
+      }
 
+      // New user → navigate to role selection
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, '/home');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RoleSelectionScreen(
+            phone: phone,
+            token: token,
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -92,34 +110,28 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // Register user with our backend
-  Future<void> _registerUser(String token, String phone) async {
+  // Check if user already exists in our local users table
+  Future<bool?> _checkExistingUser(String token) async {
     final dio = Dio();
     final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
-
-    final response = await dio.post(
-      '$baseUrl/api/auth/register',
-      options: Options(
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      ),
-      data: {
-        'phone_number': phone,
-        'fayda_id': 'FAYDA${DateTime.now().millisecondsSinceEpoch}',
-        'role': 'farmer',
-        'storage_type': 'none',
-        'farm_size_hectares': 0,
-      },
-    );
-
-    if (response.statusCode != 201) {
-      throw 'Registration failed: ${response.data}';
+    try {
+      final response = await dio.get(
+        '$baseUrl/api/auth/me',
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+      if (response.statusCode == 200) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      // If 404, user doesn't exist → new user
+      return false;
     }
-
-    final userId = response.data['user_id'];
-    await _storage.write(key: 'user_id', value: userId);
   }
 
   @override
@@ -204,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                        'Verify & Register',
+                        'Verify & Continue',
                         style: TextStyle(fontSize: 18, color: Colors.white),
                       ),
               ),
