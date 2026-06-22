@@ -7,6 +7,9 @@ const userRoutes = require('./modules/users/users.routes');
 const listingRoutes = require('./modules/listings/listing.routes');
 const deboRoutes = require('./modules/digitalDebo/debo.routes');
 const app = express();
+const transactionRoutes = require('./modules/transactionsEscrow/transaction.routes');
+const advisoryRoutes = require('./modules/advisory/advisory.routes');
+
 
 app.use(helmet());
 app.use(cors());
@@ -26,4 +29,8 @@ app.use(errorHandler);
 
 app.use('/api/listings', listingRoutes);
 app.use('/api/debo', deboRoutes);
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/advisory', advisoryRoutes);
+
+
 module.exports = app;

@@ -113,7 +113,9 @@ class _LoginScreenState extends State<LoginScreen> {
   // Check if user already exists in our local users table
   Future<bool?> _checkExistingUser(String token) async {
     final dio = Dio();
-    final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
+    final rawUrl = dotenv.env['BACKEND_API_BASE_URL'] ?? '';
+    final baseUrl =
+        rawUrl.endsWith('/') ? rawUrl.substring(0, rawUrl.length - 1) : rawUrl;
     try {
       final response = await dio.get(
         '$baseUrl/api/auth/me',
@@ -124,13 +126,31 @@ class _LoginScreenState extends State<LoginScreen> {
           },
         ),
       );
-      if (response.statusCode == 200) {
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        if (response.data != null && response.data is Map) {
+          final data = response.data as Map;
+          if (data['user_id'] != null) {
+            await _storage.write(
+                key: 'user_id', value: data['user_id'].toString());
+          }
+          if (data['role'] != null) {
+            await _storage.write(
+                key: 'user_role', value: data['role'].toString());
+          }
+        }
         return true;
       }
       return false;
+    } on DioException catch (e) {
+      // If 404, user doesn't exist yet
+      if (e.response?.statusCode == 404) {
+        return false;
+      }
+      throw 'Connection error: ${e.message}';
     } catch (e) {
-      // If 404, user doesn't exist → new user
-      return false;
+      throw 'Unexpected error: $e';
     }
   }
 

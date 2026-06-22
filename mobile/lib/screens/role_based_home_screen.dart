@@ -5,6 +5,7 @@ import 'package:smart_agri_marketplace/screens/profile_screen.dart';
 import '../features/listings/presentation/screens/listing_list_screen.dart';
 import '../features/listings/presentation/screens/listing_create_screen.dart';
 import '../features/digital_debo/presentation/screens/debo_batch_list_screen.dart';
+import 'advisory_screen.dart';
 
 class RoleBasedHomeScreen extends StatefulWidget {
   const RoleBasedHomeScreen({super.key});
@@ -21,9 +22,10 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
   // Farmer screens
   final List<Widget> _farmerScreens = const [
     ListingListScreen(), // Browse
-    MyListingsScreen(), // My Listings (we'll create this)
+    MyListingsScreen(), // My Listings
     ListingCreateScreen(), // Sell
     ProfileScreen(), // Profile
+    AdvisoryScreen(), // Advisory
   ];
 
   // Buyer screens
@@ -57,6 +59,8 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
             BottomNavigationBarItem(
                 icon: Icon(Icons.add_circle), label: 'Sell'),
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.light_mode), label: 'Advice'),
           ]
         : const [
             BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Browse'),
