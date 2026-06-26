@@ -7,7 +7,7 @@ import Sidebar from '../../components/Sidebar';
 import TopBar from '../../components/Topbar';
 import Footer from '../../components/Footer';
 
-export default function TransactionsPage() {
+export default function AgentsPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -38,13 +38,13 @@ export default function TransactionsPage() {
     <div className="flex min-h-screen bg-gray-50/80">
       <Sidebar />
       <main className="flex-1 ml-64 p-8 pb-16">
-        <TopBar title="Escrow Management" subtitle="Oversee all escrow transactions and disputes" />
+        <TopBar title="Field Agents" subtitle="Manage and monitor field agent activities" />
         <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-16 text-center animate-fade-in">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center mb-4">
-            <span className="material-symbols-outlined text-3xl text-amber-500">account_balance</span>
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center mb-4">
+            <span className="material-symbols-outlined text-3xl text-orange-500">groups</span>
           </div>
-          <h3 className="text-lg font-bold text-gray-900 mb-1">Escrow Management</h3>
-          <p className="text-sm text-gray-500">Manage secure transactions and resolve disputes.</p>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">Field Agents</h3>
+          <p className="text-sm text-gray-500">Oversee field agent assignments and performance metrics.</p>
         </div>
       </main>
       <Footer />

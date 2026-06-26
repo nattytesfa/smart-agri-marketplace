@@ -2,53 +2,63 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  HomeIcon,
-  UsersIcon,
-  ShoppingBagIcon,
-  BanknotesIcon,
-  ChartBarIcon,
-} from '@heroicons/react/24/outline';
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Users', href: '/users', icon: UsersIcon },
-  { name: 'Listings', href: '/listings', icon: ShoppingBagIcon },
-  { name: 'Transactions', href: '/transactions', icon: BanknotesIcon },
-  { name: 'Analytics', href: '/analytics-heatmap', icon: ChartBarIcon },
+  { name: 'Geospatial Analytics', href: '/dashboard', icon: 'map' },
+  { name: 'User Verification', href: '/users', icon: 'verified_user' },
+  { name: 'Escrow Management', href: '/transactions', icon: 'account_balance' },
+  { name: 'Commodity Trends', href: '/analytics-heatmap', icon: 'trending_up' },
+  { name: 'Field Agents', href: '/agents', icon: 'groups' },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 min-h-screen p-4">
-      <div className="flex items-center gap-2 mb-8 px-2">
-        <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-lg">A</span>
+    <aside className="fixed left-0 top-0 z-40 flex flex-col h-screen w-64 bg-white border-r border-gray-200">
+      <div className="flex items-center gap-3 px-6 py-6">
+        <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center text-white">
+          <span className="material-symbols-outlined text-lg">agriculture</span>
         </div>
-        <span className="text-lg font-semibold text-gray-800">Agri Admin</span>
+        <div>
+          <div className="text-base font-bold text-gray-900">AgriDirect</div>
+          <div className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">Admin Portal</div>
+        </div>
       </div>
 
-      <nav className="space-y-1">
+      <nav className="flex-1 px-3 space-y-0.5">
         {navigation.map((item) => {
-          const isActive = pathname === item.href;
+          const active = pathname === item.href;
           return (
             <Link
               key={item.name}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-green-50 text-green-700'
-                  : 'text-gray-600 hover:bg-gray-50'
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                active
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               }`}
             >
-              <item.icon className="w-5 h-5" />
-              <span className="font-medium">{item.name}</span>
+              <span className={`material-symbols-outlined text-lg ${active ? 'text-emerald-600' : 'text-gray-400'}`}>
+                {item.icon}
+              </span>
+              {item.name}
             </Link>
           );
         })}
       </nav>
-    </div>
+
+      <div className="px-3 pb-4">
+        <div className="border-t border-gray-100 pt-4">
+          <Link
+            href="/settings"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg text-gray-400">settings</span>
+            Settings
+          </Link>
+        </div>
+      </div>
+    </aside>
   );
 }

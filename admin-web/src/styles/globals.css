@@ -2,7 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Leaflet CSS */
 @import 'leaflet/dist/leaflet.css';
 
-/* Your other global styles go here */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}

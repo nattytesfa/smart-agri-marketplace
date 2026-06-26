@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabaseClient';
 import { useRouter } from 'next/navigation';
+import { supabase } from '../../lib/supabaseClient';
 import Sidebar from '../../components/Sidebar';
-import { UsersIcon, ShoppingBagIcon, BanknotesIcon } from '@heroicons/react/24/outline';
+import TopBar from '../../components/Topbar';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({ users: 0, listings: 0, transactions: 0 });
@@ -14,24 +14,19 @@ export default function DashboardPage() {
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
+      if (!session) { router.push('/login'); return; }
       await fetchStats();
     };
     checkAuth();
-  }, []);
+  }, [router]);
 
   const fetchStats = async () => {
     try {
-      // Get counts from Supabase directly
       const [usersRes, listingsRes, transactionsRes] = await Promise.all([
         supabase.from('users').select('*', { count: 'exact', head: true }),
         supabase.from('produce_listings').select('*', { count: 'exact', head: true }),
         supabase.from('transactions').select('*', { count: 'exact', head: true }),
       ]);
-
       setStats({
         users: usersRes.count || 0,
         listings: listingsRes.count || 0,
@@ -45,55 +40,52 @@ export default function DashboardPage() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-gray-200 border-t-emerald-600" />
+      </div>
+    );
   }
 
+  const cards = [
+    { label: 'Total Users', value: stats.users, icon: 'people', bg: 'bg-blue-50', iconCls: 'text-blue-600' },
+    { label: 'Total Listings', value: stats.listings, icon: 'shopping_bag', bg: 'bg-emerald-50', iconCls: 'text-emerald-600' },
+    { label: 'Total Transactions', value: stats.transactions, icon: 'payments', bg: 'bg-amber-50', iconCls: 'text-amber-600' },
+  ];
+
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex-1 p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Overview of the agricultural marketplace</p>
-        </div>
+      <div className="flex-1 ml-64">
+        <main className="p-8">
+          <TopBar title="Admin Central" subtitle="Monitor your marketplace activity" />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Users</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.users}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
-                <UsersIcon className="w-6 h-6 text-blue-600" />
+          <div className="mb-8 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <div className="h-80 bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto rounded-xl bg-white shadow-sm border border-gray-200 flex items-center justify-center mb-3">
+                  <span className="material-symbols-outlined text-3xl text-emerald-600">map</span>
+                </div>
+                <p className="text-gray-500 font-medium">Geospatial Map View</p>
+                <p className="text-sm text-gray-400 mt-0.5">Leaflet &amp; PostGIS Integration</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Listings</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.listings}</p>
+          <div className="grid grid-cols-3 gap-6">
+            {cards.map((c) => (
+              <div key={c.label} className="bg-white rounded-2xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center`}>
+                    <span className={`material-symbols-outlined ${c.iconCls}`}>{c.icon}</span>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-0.5">{c.label}</p>
+                <p className="text-3xl font-bold text-gray-900">{c.value}</p>
               </div>
-              <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
-                <ShoppingBagIcon className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
+            ))}
           </div>
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Transactions</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.transactions}</p>
-              </div>
-              <div className="w-12 h-12 bg-yellow-50 rounded-lg flex items-center justify-center">
-                <BanknotesIcon className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
-          </div>
-        </div>
+        </main>
       </div>
     </div>
   );
