@@ -1,6 +1,10 @@
 const pool = require('../../config/db');
 const { getWeatherForecast } = require('./nma.integration');
 const { getCropPrice } = require('./nmis.integration');
+// NEW: subscription service to check premium status
+const subscriptionService = require('../subscriptions/subscription.service');
+// NEW: SMS gateway to send text messages
+const { sendSms } = require('../subscriptions/smsGateway.integration');
 
 // Get farmer's active listings and profile
 const getFarmerData = async (farmerId) => {
@@ -98,9 +102,69 @@ const getLatestAdvice = async (farmerId) => {
   return result.rows[0] || null;
 };
 
+// ========== NEW: Notification logic for premium/free ==========
+
+/**
+ * Send advisory notification based on user's subscription plan
+ * Premium + offline → SMS
+ * Premium + online → push (stub)
+ * Free → store in-app
+ */
+const sendAdvisoryNotification = async (farmerId, advice, cropType) => {
+  try {
+    // Check if user has premium subscription
+    const isPremium = await subscriptionService.isPremiumActive(farmerId);
+    
+    // Get user's phone number
+    const userQuery = await pool.query(
+      'SELECT phone_number FROM users WHERE user_id = $1',
+      [farmerId]
+    );
+    const phoneNumber = userQuery.rows[0]?.phone_number;
+    
+    if (!phoneNumber) {
+      console.log(`No phone number found for user ${farmerId}`);
+      return false;
+    }
+
+    const message = `[AgriDirect] ${advice.toUpperCase()}: ${cropType}. ${advice === 'sell' ? 'Sell now!' : 'Hold for better prices.'}`;
+
+    if (isPremium) {
+      // Premium users: Send SMS (simulated for now)
+      await sendSms(phoneNumber, message);
+      console.log(`[NOTIFICATION] SMS sent to ${phoneNumber}`);
+    } else {
+      // Free users: store notification in advisory_notifications
+      const insertQuery = `
+        INSERT INTO advisory_notifications (farmer_id, crop_type, recommendation, message, delivered)
+        VALUES ($1, $2, $3, $4, false)
+      `;
+      await pool.query(insertQuery, [farmerId, cropType, advice, message]);
+      console.log(`[NOTIFICATION] In-app notification stored for ${farmerId}`);
+    }
+    return true;
+  } catch (error) {
+    console.error('Error sending notification:', error);
+    return false;
+  }
+};
+
+// Get offline notifications for user
+const getOfflineNotifications = async (farmerId) => {
+  const query = `
+    SELECT * FROM advisory_notifications
+    WHERE farmer_id = $1 AND delivered = false
+    ORDER BY created_at DESC
+  `;
+  const result = await pool.query(query, [farmerId]);
+  return result.rows;
+};
+
 module.exports = {
   getFarmerData,
   generateAdvice,
   saveAdvice,
   getLatestAdvice,
+  sendAdvisoryNotification,   // new export
+  getOfflineNotifications,    // new export
 };

@@ -70,6 +70,14 @@ const getSellOrHold = async (req, res, next) => {
       advice.message
     );
     
+    // 6. Send notification based on subscription (premium → SMS, free → in-app)
+    // Fire and forget – don't block the response if it fails
+    advisoryService.sendAdvisoryNotification(
+      farmerId,
+      advice.recommendation,
+      cropType
+    ).catch(err => console.error('Notification error:', err));
+    
     res.status(200).json({
       farmer_id: farmerId,
       crop_type: cropType,
