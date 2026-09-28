@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import Icon from './Icon';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -9,6 +10,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'danger' | 'default';
+  busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -20,50 +22,67 @@ export default function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   variant = 'default',
+  busy = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    document.body.style.overflow = 'hidden';
+    confirmRef.current?.focus();
+
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+    };
+  }, [open, onCancel]);
 
   if (!open) return null;
 
-  const confirmStyles = variant === 'danger'
-    ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
-    : 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500';
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-scale-in">
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
-          variant === 'danger' ? 'bg-red-100' : 'bg-emerald-100'
-        }`}>
-          <span className={`material-symbols-outlined ${
-            variant === 'danger' ? 'text-red-600' : 'text-emerald-600'
-          }`}>
-            {variant === 'danger' ? 'warning' : 'help'}
-          </span>
+    <div className="dialog" role="presentation">
+      <div className="dialog__overlay" onClick={onCancel} aria-hidden="true" />
+      <div
+        className="dialog__panel"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-message"
+      >
+        <div className={`dialog__icon dialog__icon--${variant}`}>
+          <Icon name={variant === 'danger' ? 'alert-triangle' : 'info'} size={22} />
         </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">{title}</h3>
-        <p className="text-sm text-gray-500 mb-6">{message}</p>
-        <div className="flex gap-3">
+        <h2 className="dialog__title" id="confirm-dialog-title">
+          {title}
+        </h2>
+        <p className="dialog__message" id="confirm-dialog-message">
+          {message}
+        </p>
+        <div className="dialog__actions">
           <button
+            type="button"
+            className="btn btn--secondary"
             onClick={onCancel}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            disabled={busy}
           >
             {cancelLabel}
           </button>
           <button
+            ref={confirmRef}
+            type="button"
+            className={`btn ${variant === 'danger' ? 'btn--danger' : 'btn--primary'}`}
             onClick={onConfirm}
-            className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white shadow-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 ${confirmStyles}`}
+            disabled={busy}
           >
+            {busy ? <span className="spinner" aria-hidden="true" /> : null}
             {confirmLabel}
           </button>
         </div>

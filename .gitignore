@@ -59,6 +59,7 @@ pnpm-debug.log
 # Next.js build output
 .next/
 out/
+*.tsbuildinfo
 
 # Testing and coverage
 coverage/

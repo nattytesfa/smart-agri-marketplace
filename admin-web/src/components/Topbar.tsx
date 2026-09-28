@@ -1,39 +1,35 @@
 'use client';
 
-import { supabase } from '../lib/supabaseClient';
-import { useRouter } from 'next/navigation';
+import { ReactNode } from 'react';
+import Icon from './Icon';
 
-interface TopBarProps {
+interface TopbarProps {
   title: string;
-  subtitle: string;
+  subtitle?: string;
+  onOpenNav?: () => void;
+  children?: ReactNode;
 }
 
-export default function TopBar({ title, subtitle }: TopBarProps) {
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
+export default function Topbar({ title, subtitle, onOpenNav, children }: TopbarProps) {
   return (
-    <div className="flex items-center justify-between mb-8">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">{title}</h1>
-        <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
-      </div>
-      <div className="flex items-center gap-4">
+    <header className="topbar">
+      {onOpenNav ? (
         <button
-          onClick={handleLogout}
-          className="text-sm text-gray-500 hover:text-red-600 transition-colors flex items-center gap-1.5"
+          type="button"
+          className="btn btn--ghost btn--icon topbar__menu-toggle"
+          onClick={onOpenNav}
+          aria-label="Open navigation"
         >
-          <span className="material-symbols-outlined text-base">logout</span>
-          Logout
+          <Icon name="menu" size={19} />
         </button>
-        <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white text-sm font-medium">
-          A
-        </div>
+      ) : null}
+
+      <div className="topbar__titles">
+        <span className="topbar__title">{title}</span>
+        {subtitle ? <span className="topbar__subtitle">{subtitle}</span> : null}
       </div>
-    </div>
+
+      <div className="topbar__actions">{children}</div>
+    </header>
   );
 }

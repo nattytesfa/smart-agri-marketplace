@@ -9,27 +9,42 @@ export default function HomePage() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        // Check if user is admin
-        const { data: userData } = await supabase
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        const { data: profile } = await supabase
           .from('users')
           .select('role')
           .eq('user_id', session.user.id)
-          .single();
-        if (userData?.role === 'admin') {
+          .maybeSingle();
+
+        if (profile?.role === 'admin') {
           router.replace('/dashboard');
           return;
         }
+        await supabase.auth.signOut();
       }
+
       router.replace('/login');
     };
+
     checkAuth();
   }, [router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <span className="spinner spinner--lg" style={{ color: 'var(--brand)' }} role="status">
+        <span className="u-visually-hidden">Loading</span>
+      </span>
     </div>
   );
 }

@@ -1,25 +1,23 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
-import Sidebar from '../../components/Sidebar';
-import Footer from '../../components/Footer';
-import { supabase } from '../../lib/supabaseClient';
-import { getBackendClient } from '../../lib/apiClient';
+import AppShell, { ErrorPanel } from '../../components/AppShell';
+import PageHeader from '../../components/PageHeader';
+import Icon from '../../components/Icon';
+import EmptyState from '../../components/EmptyState';
+import { adminRequest, useAsyncData } from '../../hooks/useAdminData';
+import { formatCompactCurrency, formatNumber, titleCase } from '../../lib/format';
 
-const MapContainer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.TileLayer),
-  { ssr: false }
-);
-const GeoJSON = dynamic(
-  () => import('react-leaflet').then((mod) => mod.GeoJSON),
-  { ssr: false }
-);
+const MapContainer = dynamic(() => import('react-leaflet').then((mod) => mod.MapContainer), {
+  ssr: false,
+});
+const TileLayer = dynamic(() => import('react-leaflet').then((mod) => mod.TileLayer), {
+  ssr: false,
+});
+const GeoJSON = dynamic(() => import('react-leaflet').then((mod) => mod.GeoJSON), {
+  ssr: false,
+});
 
 interface HeatmapData {
   geometry: string;
@@ -29,164 +27,279 @@ interface HeatmapData {
   crop_type: string;
 }
 
+const CROP_OPTIONS = ['', 'teff', 'wheat', 'maize', 'coffee', 'sorghum', 'barley', 'beans'];
+
+/** Bucket colour thresholds — matches the legend rendered in the header. */
+function getColor(count: number): string {
+  if (count > 20) return '#dc2626';
+  if (count > 10) return '#d97706';
+  if (count > 5) return '#059669';
+  return '#64748b';
+}
+
+const LEGEND = [
+  { color: '#dc2626', label: 'High (20+)' },
+  { color: '#d97706', label: 'Medium (11–20)' },
+  { color: '#059669', label: 'Low (6–10)' },
+  { color: '#64748b', label: 'Minimal (<6)' },
+];
+
+const loadHeatmap = (crop: string) =>
+  adminRequest<HeatmapData[]>(
+    `/api/admin/heatmap${crop ? `?crop=${encodeURIComponent(crop)}` : ''}`
+  );
+
 export default function HeatmapPage() {
-  const [data, setData] = useState<HeatmapData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedCrop, setSelectedCrop] = useState('');
-  const [mapReady, setMapReady] = useState(false);
-  const router = useRouter();
+  const [crop, setCrop] = useState('');
 
-  useEffect(() => {
-    const initLeaflet = async () => {
-      const L = await import('leaflet');
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
-        shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
-      });
-      setMapReady(true);
-    };
-    initLeaflet();
-  }, []);
+  const { data, error, loading, initialLoading, reload } = useAsyncData<HeatmapData[]>(
+    () => loadHeatmap(crop),
+    [crop]
+  );
 
-  const fetchHeatmapData = useCallback(async (crop?: string) => {
-    setLoading(true);
-    try {
-      const api = await getBackendClient();
-      const response = await api.get('/api/admin/heatmap', {
-        params: { crop: crop || undefined },
-      });
-      setData(response.data);
-    } catch (error) {
-      console.error('Error fetching heatmap data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const rows = useMemo(() => data ?? [], [data]);
 
-   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-      await fetchHeatmapData();
-    };
-    checkAuth();
-  }, [router, fetchHeatmapData]);
+  const summary = useMemo(() => {
+    const totalListings = rows.reduce((sum, row) => sum + (Number(row.listing_count) || 0), 0);
+    const totalQuantity = rows.reduce((sum, row) => sum + (Number(row.total_quantity) || 0), 0);
+    const weightedPrice =
+      totalQuantity > 0
+        ? rows.reduce(
+            (sum, row) => sum + (Number(row.avg_price) || 0) * (Number(row.total_quantity) || 0),
+            0
+          ) / totalQuantity
+        : 0;
 
-  const handleCropFilter = (crop: string) => {
-    setSelectedCrop(crop);
-    fetchHeatmapData(crop);
-  };
+    return { totalListings, totalQuantity, weightedPrice, regions: rows.length };
+  }, [rows]);
 
-  const getColor = (count: number) => {
-    if (count > 20) return '#dc2626';
-    if (count > 10) return '#f59e0b';
-    if (count > 5) return '#10b981';
-    return '#6b7280';
-  };
-
-  if (loading && !data.length) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-14 h-14 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="material-symbols-outlined text-emerald-600 text-lg">trending_up</span>
-            </div>
-          </div>
-          <p className="text-sm text-gray-500 font-medium">Loading heatmap data...</p>
-        </div>
-      </div>
-    );
-  }
+  const sortedRows = useMemo(
+    () => [...rows].sort((a, b) => (Number(b.total_quantity) || 0) - (Number(a.total_quantity) || 0)),
+    [rows]
+  );
 
   return (
-    <div className="flex min-h-screen bg-gray-50/80">
-      <Sidebar />
-      <div className="flex-1 p-8 pb-16">
-        <div className="mb-8 animate-fade-in">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Analytics Heatmap</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Regional supply and demand visualization</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl border border-gray-200 shadow-sm text-xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                <span className="text-gray-600 font-medium">High</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span className="text-gray-600 font-medium">Medium</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span className="text-gray-600 font-medium">Low</span>
+    <AppShell
+      title="Commodity Heatmap"
+      subtitle="Regional supply concentration for available listings"
+      topbarActions={
+        <button
+          type="button"
+          className="btn btn--ghost btn--icon"
+          onClick={reload}
+          aria-label="Refresh heatmap data"
+          title="Refresh"
+          disabled={loading}
+        >
+          <Icon name="refresh" size={18} />
+        </button>
+      }
+    >
+      <PageHeader
+        eyebrow="Insights"
+        eyebrowIcon="trending-up"
+        title="Regional supply heatmap"
+        description="Each area is an aggregate of available listings for the selected crop, coloured by listing density. Larger clusters mean more supply competing in that region."
+        actions={
+          <div className="field" style={{ minWidth: '11rem' }}>
+            <label className="u-visually-hidden" htmlFor="crop-filter">
+              Filter by crop
+            </label>
+            <select
+              id="crop-filter"
+              className="select"
+              value={crop}
+              onChange={(event) => setCrop(event.target.value)}
+            >
+              {CROP_OPTIONS.map((option) => (
+                <option key={option || 'all'} value={option}>
+                  {option ? titleCase(option) : 'All crops'}
+                </option>
+              ))}
+            </select>
+          </div>
+        }
+      />
+
+      {error ? (
+        <ErrorPanel message={error} onRetry={reload} />
+      ) : (
+        <div className="stack">
+          <div className="grid grid--stats stagger">
+            <div className="stat">
+              <div className="stat__top">
+                <span className="stat__label">Areas mapped</span>
+                <span className="stat__icon stat__icon--brand">
+                  <Icon name="map" size={18} />
+                </span>
               </div>
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-base pointer-events-none">filter_alt</span>
-                <select
-                  value={selectedCrop}
-                  onChange={(e) => handleCropFilter(e.target.value)}
-                  className="pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all duration-150 appearance-none cursor-pointer"
-                >
-                  <option value="">All Crops</option>
-                  <option value="teff">Teff</option>
-                  <option value="wheat">Wheat</option>
-                  <option value="maize">Maize</option>
-                  <option value="coffee">Coffee</option>
-                </select>
-                <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">expand_more</span>
+              <p className="stat__value">
+                {initialLoading ? (
+                  <span className="skeleton skeleton--title" />
+                ) : (
+                  formatNumber(summary.regions)
+                )}
+              </p>
+              <p className="stat__meta">Clustered supply areas</p>
+            </div>
+
+            <div className="stat">
+              <div className="stat__top">
+                <span className="stat__label">Listings counted</span>
+                <span className="stat__icon stat__icon--blue">
+                  <Icon name="package" size={18} />
+                </span>
+              </div>
+              <p className="stat__value">
+                {initialLoading ? (
+                  <span className="skeleton skeleton--title" />
+                ) : (
+                  formatNumber(summary.totalListings)
+                )}
+              </p>
+              <p className="stat__meta">Available listings only</p>
+            </div>
+
+            <div className="stat">
+              <div className="stat__top">
+                <span className="stat__label">Total quantity</span>
+                <span className="stat__icon stat__icon--amber">
+                  <Icon name="layers" size={18} />
+                </span>
+              </div>
+              <p className="stat__value">
+                {initialLoading ? (
+                  <span className="skeleton skeleton--title" />
+                ) : (
+                  formatNumber(summary.totalQuantity)
+                )}
+              </p>
+              <p className="stat__meta">Units on offer</p>
+            </div>
+
+            <div className="stat">
+              <div className="stat__top">
+                <span className="stat__label">Weighted avg price</span>
+                <span className="stat__icon stat__icon--violet">
+                  <Icon name="percent" size={18} />
+                </span>
+              </div>
+              <p className="stat__value">
+                {initialLoading ? (
+                  <span className="skeleton skeleton--title" />
+                ) : (
+                  formatCompactCurrency(summary.weightedPrice)
+                )}
+              </p>
+              <p className="stat__meta">Per unit across all areas</p>
+            </div>
+          </div>
+
+          <div className="card card--flush">
+            <div className="card__header">
+              <div className="card__titles">
+                <h2 className="card__title">Supply concentration</h2>
+                <p className="card__subtitle">
+                  {crop ? `${titleCase(crop)} listings` : 'All available listings'}
+                </p>
+              </div>
+              <div className="card__actions">
+                <div className="legend">
+                  {LEGEND.map((entry) => (
+                    <span key={entry.label} className="legend__item">
+                      <span
+                        className="legend__swatch"
+                        style={{ backgroundColor: entry.color }}
+                        aria-hidden="true"
+                      />
+                      {entry.label}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
+
+            {initialLoading ? (
+              <div style={{ padding: 'var(--space-6)' }}>
+                <div className="skeleton skeleton--block" style={{ height: '30rem' }} />
+              </div>
+            ) : rows.length > 0 ? (
+              <>
+                <div className={`heatmap${loading ? ' is-loading' : ''}`}>
+                  <MapContainer
+                    center={[9.032, 38.742]}
+                    zoom={6}
+                    scrollWheelZoom
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    />
+                    {rows.map((row, index) => {
+                      let geometry;
+                      try {
+                        geometry = JSON.parse(row.geometry);
+                      } catch {
+                        return null;
+                      }
+                      return (
+                        <GeoJSON
+                          key={`${row.crop_type}-${index}`}
+                          data={geometry}
+                          style={{
+                            color: getColor(Number(row.listing_count) || 0),
+                            weight: 2,
+                            fillOpacity: 0.45,
+                          }}
+                        />
+                      );
+                    })}
+                  </MapContainer>
+                </div>
+
+                <div className="table-wrap" style={{ borderTop: '1px solid var(--border)' }}>
+                  <table className="table table--compact">
+                    <thead>
+                      <tr>
+                        <th scope="col">Crop</th>
+                        <th scope="col">Listings</th>
+                        <th scope="col">Total quantity</th>
+                        <th scope="col">Avg unit price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRows.map((row, index) => (
+                        <tr key={`${row.crop_type}-${index}`}>
+                          <td className="table__cell--strong">
+                            <span className="identity">
+                              <span
+                                className="legend__swatch"
+                                style={{ backgroundColor: getColor(Number(row.listing_count) || 0) }}
+                                aria-hidden="true"
+                              />
+                              {titleCase(row.crop_type)}
+                            </span>
+                          </td>
+                          <td>{formatNumber(row.listing_count)}</td>
+                          <td>{formatNumber(row.total_quantity)}</td>
+                          <td>{formatCompactCurrency(row.avg_price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <EmptyState
+                icon="map"
+                title="No supply data to map"
+                message="The aggregation returned no available listings with a known location. Publish listings with GPS coordinates, or pick a different crop."
+              />
+            )}
           </div>
         </div>
-
-        {data.length > 0 && mapReady ? (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 overflow-hidden animate-fade-in">
-            <div className="h-[600px] relative">
-              <MapContainer
-                center={[9.032, 38.742]}
-                zoom={6}
-                style={{ height: '100%', width: '100%' }}
-                zoomControl={true}
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-                {data.map((item, index) => {
-                  try {
-                    const geometry = JSON.parse(item.geometry);
-                    return (
-                      <GeoJSON
-                        key={index}
-                        data={geometry}
-                        style={{
-                          color: getColor(item.listing_count),
-                          weight: 2,
-                          fillOpacity: 0.5,
-                        }}
-                      />
-                    );
-                  } catch (e) {
-                    return null;
-                  }
-                })}
-              </MapContainer>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200/80 p-16 text-center animate-fade-in">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-              <span className="material-symbols-outlined text-3xl text-gray-300">map</span>
-            </div>
-            <p className="text-gray-500 font-medium">No data available for the heatmap</p>
-            <p className="text-sm text-gray-400 mt-1">Create some listings to see regional data visualized</p>
-          </div>
-        )}
-      </div>
-      <Footer />
-    </div>
+      )}
+    </AppShell>
   );
 }

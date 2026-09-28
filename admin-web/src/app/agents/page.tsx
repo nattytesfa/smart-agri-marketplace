@@ -1,53 +1,82 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '../../lib/supabaseClient';
-import Sidebar from '../../components/Sidebar';
-import TopBar from '../../components/Topbar';
-import Footer from '../../components/Footer';
+import AppShell from '../../components/AppShell';
+import PageHeader from '../../components/PageHeader';
+import Icon, { type IconName } from '../../components/Icon';
+
+interface PlannedCapability {
+  icon: IconName;
+  title: string;
+  description: string;
+}
+
+const PLANNED: PlannedCapability[] = [
+  {
+    icon: 'user-group',
+    title: 'Agent roster',
+    description: 'Field agents, their regions and the farmer clusters each one covers.',
+  },
+  {
+    icon: 'map-pin',
+    title: 'Territory assignment',
+    description: 'Geographic boundaries per agent, derived from the Debo clustering output.',
+  },
+  {
+    icon: 'trending-up',
+    title: 'Performance metrics',
+    description: 'Listings created, verifications completed and adoption rate per agent.',
+  },
+  {
+    icon: 'bell',
+    title: 'Alert dispatch',
+    description: 'Advisory and price notifications sent to farmers through an agent.',
+  },
+];
 
 export default function AgentsPage() {
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  return (
+    <AppShell
+      title="Field Agents"
+      subtitle="Oversee field agent coverage and performance"
+    >
+      <PageHeader
+        eyebrow="Operations"
+        eyebrowIcon="user-group"
+        title="Field agents"
+        description="Agent management is the one admin module still waiting on its backend endpoints. The panel below documents exactly what will appear here once they land."
+      />
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-      setLoading(false);
-    };
-    checkAuth();
-  }, [router]);
+      <div className="card">
+        <div className="card__body">
+          <div className="notice">
+            <span className="notice__icon">
+              <Icon name="user-group" size={26} />
+            </span>
+            <h2 className="notice__title">No agent data source yet</h2>
+            <p className="notice__message">
+              The backend does not currently expose an <code>/api/admin/agents</code>{' '}
+              endpoint, so there is nothing real to display here. Rather than render
+              placeholder figures that could be mistaken for live data, this page lists
+              the capabilities that are planned.
+            </p>
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-14 h-14 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin" />
-          <p className="text-sm text-gray-500 font-medium">Loading...</p>
+            <div className="notice__list">
+              {PLANNED.map((capability) => (
+                <div key={capability.title} className="notice__list-item">
+                  <Icon
+                    name={capability.icon}
+                    size={16}
+                    className="notice__list-icon"
+                  />
+                  <span>
+                    <strong>{capability.title}</strong> — {capability.description}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-    );
-  }
-
-  return (
-    <div className="flex min-h-screen bg-gray-50/80">
-      <Sidebar />
-      <main className="flex-1 ml-64 p-8 pb-16">
-        <TopBar title="Field Agents" subtitle="Manage and monitor field agent activities" />
-        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-16 text-center animate-fade-in">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-orange-50 to-orange-100 flex items-center justify-center mb-4">
-            <span className="material-symbols-outlined text-3xl text-orange-500">groups</span>
-          </div>
-          <h3 className="text-lg font-bold text-gray-900 mb-1">Field Agents</h3>
-          <p className="text-sm text-gray-500">Oversee field agent assignments and performance metrics.</p>
-        </div>
-      </main>
-      <Footer />
-    </div>
+    </AppShell>
   );
 }

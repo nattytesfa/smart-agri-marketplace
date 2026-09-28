@@ -9,6 +9,7 @@ const deboRoutes = require('./modules/digitalDebo/debo.routes');
 const transactionRoutes = require('./modules/transactionsEscrow/transaction.routes');
 const advisoryRoutes = require('./modules/advisory/advisory.routes');
 const subscriptionRoutes = require('./modules/subscriptions/subscription.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/listings', listingRoutes);
 app.use('/api/debo', deboRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/advisory', advisoryRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Global error handler last
 app.use(errorHandler);

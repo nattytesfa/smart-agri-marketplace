@@ -1,0 +1,224 @@
+/* ==========================================================================
+   Design tokens
+   Single source of truth for the AgriDirect admin design system.
+   Raw scales live at the top, semantic aliases below. Components should only
+   ever consume the semantic layer so the theme can be re-skinned in one place.
+   ========================================================================== */
+
+:root {
+  /* --------------------------------------------------------------------------
+     Brand — emerald (agriculture)
+     -------------------------------------------------------------------------- */
+  --emerald-50: #ecfdf5;
+  --emerald-100: #d1fae5;
+  --emerald-200: #a7f3d0;
+  --emerald-300: #6ee7b7;
+  --emerald-400: #34d399;
+  --emerald-500: #10b981;
+  --emerald-600: #059669;
+  --emerald-700: #047857;
+  --emerald-800: #065f46;
+  --emerald-900: #064e3b;
+  --emerald-950: #022c22;
+
+  /* --------------------------------------------------------------------------
+     Neutral — cool slate, keeps the green from reading as "lime"
+     -------------------------------------------------------------------------- */
+  --slate-50: #f8fafc;
+  --slate-100: #f1f5f9;
+  --slate-200: #e2e8f0;
+  --slate-300: #cbd5e1;
+  --slate-400: #94a3b8;
+  --slate-500: #64748b;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1e293b;
+  --slate-900: #0f172a;
+  --slate-950: #020617;
+
+  /* --------------------------------------------------------------------------
+     Status
+     -------------------------------------------------------------------------- */
+  --red-50: #fef2f2;
+  --red-100: #fee2e2;
+  --red-200: #fecaca;
+  --red-600: #dc2626;
+  --red-700: #b91c1c;
+  --amber-50: #fffbeb;
+  --amber-100: #fef3c7;
+  --amber-200: #fde68a;
+  --amber-600: #d97706;
+  --amber-700: #b45309;
+  --blue-50: #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --violet-50: #f5f3ff;
+  --violet-100: #ede9fe;
+  --violet-200: #ddd6fe;
+  --violet-600: #7c3aed;
+  --violet-700: #6d28d9;
+
+  /* --------------------------------------------------------------------------
+     Semantic — brand
+     -------------------------------------------------------------------------- */
+  --brand: var(--emerald-700);
+  --brand-hover: var(--emerald-800);
+  --brand-active: var(--emerald-900);
+  --brand-contrast: #ffffff;
+  --brand-soft: var(--emerald-50);
+  --brand-soft-hover: var(--emerald-100);
+  --brand-border: var(--emerald-200);
+  --brand-text: var(--emerald-700);
+  --brand-accent: var(--emerald-400);
+
+  /* --------------------------------------------------------------------------
+     Semantic — surfaces
+     -------------------------------------------------------------------------- */
+  --bg-app: #f6f7f9;
+  --bg-surface: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-sunken: var(--slate-50);
+  --bg-inset: var(--slate-100);
+  --bg-hover: var(--slate-50);
+  --bg-overlay: rgba(15, 23, 42, 0.45);
+
+  /* --------------------------------------------------------------------------
+     Semantic — text
+     -------------------------------------------------------------------------- */
+  --text-strong: var(--slate-900);
+  --text: var(--slate-700);
+  --text-muted: var(--slate-500);
+  --text-subtle: var(--slate-400);
+  --text-inverse: #ffffff;
+  --text-on-brand: var(--emerald-50);
+
+  /* --------------------------------------------------------------------------
+     Semantic — borders
+     -------------------------------------------------------------------------- */
+  --border: var(--slate-200);
+  --border-subtle: var(--slate-100);
+  --border-strong: var(--slate-300);
+  --border-focus: var(--emerald-500);
+
+  /* --------------------------------------------------------------------------
+     Navigation (dark emerald sidebar)
+     -------------------------------------------------------------------------- */
+  --nav-bg-top: #07372c;
+  --nav-bg-bottom: #04211b;
+  --nav-border: rgba(255, 255, 255, 0.08);
+  --nav-text: rgba(236, 254, 245, 0.68);
+  --nav-text-hover: #ffffff;
+  --nav-text-active: #ecfdf5;
+  --nav-hover: rgba(255, 255, 255, 0.06);
+  --nav-active-bg: rgba(52, 211, 153, 0.14);
+  --nav-active-bar: var(--emerald-400);
+  --nav-section: rgba(236, 254, 245, 0.42);
+  --nav-footer-bg: rgba(255, 255, 255, 0.04);
+
+  /* --------------------------------------------------------------------------
+     Typography
+     Self-hosted system stack: keeps builds hermetic (no Google Fonts fetch) and
+     renders instantly. Inter is used when the viewer already has it locally.
+     -------------------------------------------------------------------------- */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --text-2xs: 0.6875rem; /* 11px — eyebrow labels */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.8125rem; /* 13px — dense table body */
+  --text-base: 0.875rem; /* 14px — default UI */
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.125rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.014em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-widest: 0.08em;
+
+  /* --------------------------------------------------------------------------
+     Spacing — 4px base
+     -------------------------------------------------------------------------- */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* --------------------------------------------------------------------------
+     Radii
+     -------------------------------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-full: 999px;
+
+  /* --------------------------------------------------------------------------
+     Elevation — layered, low-opacity, tinted with the text colour
+     -------------------------------------------------------------------------- */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.08),
+    0 2px 6px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 12px 28px -6px rgba(15, 23, 42, 0.13),
+    0 6px 12px -6px rgba(15, 23, 42, 0.07);
+  --shadow-xl: 0 24px 48px -12px rgba(15, 23, 42, 0.2);
+  --shadow-focus: 0 0 0 3px rgba(5, 150, 105, 0.18);
+  --shadow-focus-danger: 0 0 0 3px rgba(220, 38, 38, 0.18);
+
+  /* --------------------------------------------------------------------------
+     Layout metrics
+     -------------------------------------------------------------------------- */
+  --sidebar-width: 16.25rem; /* 260px */
+  --topbar-height: 4rem; /* 64px */
+  --footer-height: 3.25rem;
+  --content-max: 96rem;
+  --content-pad-x: var(--space-8);
+  --content-pad-y: var(--space-8);
+
+  /* --------------------------------------------------------------------------
+     Motion
+     -------------------------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+
+  /* --------------------------------------------------------------------------
+     Z-index scale
+     -------------------------------------------------------------------------- */
+  --z-base: 1;
+  --z-sticky: 20;
+  --z-nav: 30;
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-dialog: 60;
+  --z-toast: 70;
+}
