@@ -38,19 +38,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _logout(BuildContext context) async {
     try {
       await Supabase.instance.client.auth.signOut();
+
+      // Clear local state even if signOut throws, otherwise the next launch
+      // restores a session the user believes they ended.
       await _storage.delete(key: 'supabase_token');
       await _storage.delete(key: 'user_role');
       await _storage.delete(key: 'user_id');
 
-      if (context.mounted) {
-        Navigator.pushReplacementNamed(context, '/login');
-      }
+      if (!context.mounted) return;
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/login',
+        (route) => false,
+      );
     } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error logging out: $error')),
-        );
-      }
+      await _storage.delete(key: 'supabase_token');
+      await _storage.delete(key: 'user_role');
+      await _storage.delete(key: 'user_id');
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error logging out: $error')),
+      );
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/login',
+        (route) => false,
+      );
     }
   }
 
@@ -87,7 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
-                        color: _getRoleColor(_role).withOpacity(0.15),
+                        color: _getRoleColor(_role).withValues(),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: _getRoleColor(_role)),
                       ),
