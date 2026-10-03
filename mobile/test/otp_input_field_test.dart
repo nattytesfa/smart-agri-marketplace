@@ -9,7 +9,8 @@ void main() {
 
   Future<void> pump(WidgetTester tester, {int length = 6}) {
     return tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: Center(child: OtpInputField(key: key, length: length))),
+      home: Scaffold(
+          body: Center(child: OtpInputField(key: key, length: length))),
     ));
   }
 
@@ -40,7 +41,8 @@ void main() {
     var calls = 0;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: Center(child: OtpInputField(key: key, onCompleted: (_) => calls++)),
+        body:
+            Center(child: OtpInputField(key: key, onCompleted: (_) => calls++)),
       ),
     ));
 

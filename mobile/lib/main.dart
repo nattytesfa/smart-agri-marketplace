@@ -11,6 +11,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'data/models/listing_model.dart';
 import 'screens/login_screen.dart';
+import 'screens/register_screen.dart';
 import 'screens/role_selection_screen.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
@@ -109,6 +110,7 @@ class MyApp extends StatelessWidget {
       initialRoute: _initialRoute(),
       routes: {
         '/login': (context) => const LoginScreen(),
+        '/register': (context) => const RegisterScreen(),
         '/home': (context) => const RoleBasedHomeScreen(),
         '/role_selection': (context) {
           final session = Supabase.instance.client.auth.currentSession;
