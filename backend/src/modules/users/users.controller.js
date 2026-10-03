@@ -21,7 +21,17 @@ const register = async (req, res, next) => {
       return res.status(401).json({ error: 'Unauthorized – no user found' });
     }
 
-    const { phone_number, fayda_id, role, storage_type, farm_size_hectares } = req.body;
+    const {
+    phone_number,
+    fayda_id,
+    role,
+    storage_type,
+    farm_size_hectares,
+    full_name,
+    region,
+    zone,
+    kebele,
+  } = req.body;
 
     // Verify Fayda (stub)
     const faydaResult = await verifyFayda(fayda_id);
@@ -38,7 +48,12 @@ const register = async (req, res, next) => {
     const userId = supabaseUser.id;
 
     // Insert user
-    await userService.createUser(userId, phone_number, fayda_id, role);
+    await userService.createUser(userId, phone_number, fayda_id, role, 'supabase-managed', {
+      fullName: full_name,
+      region,
+      zone,
+      kebele,
+    });
 
     // Create profile based on role
     if (role === 'farmer') {
@@ -51,6 +66,9 @@ const register = async (req, res, next) => {
       message: 'User registered successfully',
       user_id: userId,
       role,
+      region,
+      zone,
+      kebele,
     });
   } catch (error) {
     logger.error('Register error:', error);
@@ -78,4 +96,24 @@ const getMe = async (req, res, next) => {
   }
 };
 
-module.exports = { register, getMe };
+// GET /api/auth/check-registration?phone_number=...
+// Public, because the registration screen needs it before the phone is verified
+// and therefore before a Supabase session exists. A registered phone only ever
+// gets "true" back, never any account detail.
+const checkRegistration = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const existing = await userService.findUserByPhone(req.query.phone_number);
+
+    res.status(200).json({ registered: Boolean(existing) });
+  } catch (error) {
+    logger.error('CheckRegistration error:', error);
+    next(error);
+  }
+};
+
+module.exports = { register, getMe, checkRegistration };

@@ -10,11 +10,23 @@ const findUserByPhone = async (phone) => {
 };
 
 // Create new user
-const createUser = async (userId, phone, faydaId, role, passwordHash = 'supabase-managed') => {
+// `details` holds the location and name captured during registration.
+const createUser = async (
+  userId,
+  phone,
+  faydaId,
+  role,
+  passwordHash = 'supabase-managed',
+  details = {}
+) => {
+  const { fullName = null, region = null, zone = null, kebele = null } = details;
+
   await pool.query(
-    `INSERT INTO users (user_id, phone_number, fayda_id, role, hashed_password, language_pref)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [userId, phone, faydaId, role, passwordHash, 'am']
+    `INSERT INTO users
+       (user_id, phone_number, fayda_id, role, hashed_password, language_pref,
+        full_name, region, zone, kebele)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [userId, phone, faydaId, role, passwordHash, 'am', fullName, region, zone, kebele]
   );
 };
 
@@ -39,7 +51,8 @@ const createBuyerProfile = async (userId, buyerType = 'retailer', businessName =
 // Get user with profile
 const getUserById = async (userId) => {
   const result = await pool.query(
-    `SELECT user_id, phone_number, fayda_id, role, language_pref, created_at
+    `SELECT user_id, phone_number, fayda_id, role, language_pref,
+            full_name, region, zone, kebele, created_at
      FROM users WHERE user_id = $1`,
     [userId]
   );
