@@ -20,9 +20,10 @@ const getPendingUsers = async () => {
 const verifyUser = async (userId) => {
   const query = `
     UPDATE users 
-    SET fayda_verified = true 
+    SET fayda_verified = true,
+        fayda_verified_at = NOW()
     WHERE user_id = $1
-    RETURNING user_id
+    RETURNING user_id, fayda_verified, fayda_verified_at
   `;
   const result = await pool.query(query, [userId]);
   return result.rows[0];
