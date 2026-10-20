@@ -193,6 +193,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedStorage,
+                  // Let the chosen label shrink instead of pushing past 375px.
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Storage Type',
                     border: OutlineInputBorder(),
