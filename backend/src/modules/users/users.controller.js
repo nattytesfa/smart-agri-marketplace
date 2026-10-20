@@ -84,7 +84,7 @@ const getMe = async (req, res, next) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const user = await userService.getUserById(supabaseUser.id);
+    const user = await userService.getUserById(supabaseUser.id, supabaseUser);
     if (!user) {
       return res.status(404).json({ error: 'User not found in local database' });
     }
@@ -107,7 +107,11 @@ const checkRegistration = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const existing = await userService.findUserByPhone(req.query.phone_number);
+    // Normalise here as well as at registration: if the app ever supplies a
+    // number without the plus sign, this still resolves to the stored row
+    // instead of answering "not registered" for a phone that has an account.
+    const phone = userService.toE164(req.query.phone_number);
+    const existing = await userService.findUserByPhone(phone);
 
     res.status(200).json({ registered: Boolean(existing) });
   } catch (error) {
