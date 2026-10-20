@@ -8,6 +8,7 @@ import '../widgets/auth_page.dart';
 import '../widgets/error_banner.dart';
 import 'otp_screen.dart';
 import 'phone_validation.dart';
+import 'role_selection_screen.dart';
 
 /// Registration entry point: name, location and phone number, then an OTP.
 ///
@@ -15,11 +16,29 @@ import 'phone_validation.dart';
 /// the backend only accepts POST /api/auth/register behind a valid session.
 /// So this screen collects the details and sends the code; the verified OTP
 /// continues to role selection.
+///
+/// [verifiedSession] is set when the number has just been proven by an OTP
+/// sent from sign-in and no account exists behind it. There is nothing left to
+/// verify, so the form collects the details and continues straight to role
+/// selection.
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key, this.authService});
+  const RegisterScreen({
+    super.key,
+    this.authService,
+    this.phone,
+    this.verifiedSession,
+  });
 
   /// Overridable so tests can drive the duplicate-number check.
   final AuthService? authService;
+
+  /// Phone already verified in this session, if there is one. The field is
+  /// read-only then, because the backend stores whatever number is attached
+  /// to the bearer token.
+  final String? phone;
+
+  /// Access token for the session proved by the OTP.
+  final String? verifiedSession;
 
   @override
   RegisterScreenState createState() => RegisterScreenState();
@@ -39,7 +58,7 @@ class RegisterScreenState extends State<RegisterScreen> {
   @override
   void initState() {
     super.initState();
-    _redirectIfSignedIn();
+    _prefillAndRedirectIfSignedIn();
   }
 
   @override
@@ -50,10 +69,27 @@ class RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _redirectIfSignedIn() {
+  void _prefillAndRedirectIfSignedIn() {
+    if (widget.phone != null) _phoneController.text = widget.phone!;
+
+    // Arriving from sign-in with a proven session is the point of this form,
+    // so there is nothing to redirect away from.
+    if (widget.verifiedSession != null) return;
+
     if (Supabase.instance.client.auth.currentSession == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    final session = Supabase.instance.client.auth.currentSession!;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      // Same rule as sign-in: a finished account belongs in the app, while an
+      // abandoned registration is discarded so this form really is blank. One
+      // attempt only — if the backend does not answer, the form stays put
+      // instead of signing a real user out.
+      final gate = await sessionGateFor(
+        session.accessToken,
+        auth: _auth,
+        attempts: 1,
+      );
+      if (!mounted || gate != SessionGate.open) return;
       Navigator.pushReplacementNamed(context, '/home');
     });
   }
@@ -90,7 +126,7 @@ class RegisterScreenState extends State<RegisterScreen> {
     return null;
   }
 
-  Future<void> _sendOtp() async {
+  Future<void> _submit() async {
     final name = _nameController.text.trim();
     final kebele = _kebeleController.text.trim();
     final phone = normalizeEthiopianPhone(_phoneController.text.trim());
@@ -102,13 +138,38 @@ class RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    final verifiedPhone = phone!;
+    final draft = RegistrationDraft(
+      fullName: name,
+      region: _region!,
+      zone: _zone!,
+      kebele: kebele,
+    );
+    // Set when the number was verified on the way here and the backend had no
+    // account behind it. Nothing left to send or check: the session is proven,
+    // so registration only has to finish.
+    final token = widget.verifiedSession;
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
-    final verifiedPhone = phone!;
     try {
+      if (token != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RoleSelectionScreen(
+              phone: verifiedPhone,
+              token: token,
+              draft: draft,
+            ),
+          ),
+        );
+        return;
+      }
+
       // Check first so an already-registered number does not get an OTP sent
       // to it. A failed lookup must not read as "not registered": stop and say
       // so, otherwise the duplicate check silently does nothing.
@@ -139,12 +200,7 @@ class RegisterScreenState extends State<RegisterScreen> {
           builder: (context) => OtpScreen(
             phone: verifiedPhone,
             isRegistration: true,
-            draft: RegistrationDraft(
-              fullName: name,
-              region: _region!,
-              zone: _zone!,
-              kebele: kebele,
-            ),
+            draft: draft,
           ),
         ),
       );
@@ -153,9 +209,8 @@ class RegisterScreenState extends State<RegisterScreen> {
       setState(() => _errorMessage = readableAuthError(e));
     } catch (e) {
       if (!mounted) return;
-      debugPrint('sendOtp error: $e');
-      setState(
-          () => _errorMessage = 'Could not send the code. Please try again.');
+      debugPrint('register submit error: $e');
+      setState(() => _errorMessage = 'Could not continue. Please try again.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -177,9 +232,11 @@ class RegisterScreenState extends State<RegisterScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Tell us who you are and where you are, then verify your number',
-          style: TextStyle(fontSize: 15, color: Colors.grey),
+        Text(
+          widget.verifiedSession != null
+              ? 'Your number is verified. Finish setting up your account.'
+              : 'Tell us who you are and where you are, then verify your number',
+          style: const TextStyle(fontSize: 15, color: Colors.grey),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
@@ -254,30 +311,38 @@ class RegisterScreenState extends State<RegisterScreen> {
           controller: _phoneController,
           keyboardType: TextInputType.phone,
           textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
+          // The session belongs to this number, so letting it be edited would
+          // register a different number against the token.
+          enabled: widget.verifiedSession == null,
+          decoration: InputDecoration(
             labelText: 'Phone Number',
             hintText: '0912 345 678',
-            border: OutlineInputBorder(),
-            prefixIcon: Icon(Icons.phone),
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.phone),
+            helperText: widget.verifiedSession == null
+                ? null
+                : 'Verified in this session',
           ),
-          onSubmitted: (_) => _sendOtp(),
+          onSubmitted: (_) => _submit(),
         ),
         const SizedBox(height: 20),
         AuthPrimaryButton(
-          label: 'Send OTP',
+          label: widget.verifiedSession != null ? 'Continue' : 'Send OTP',
           isLoading: _isLoading,
-          onPressed: _sendOtp,
+          onPressed: _submit,
         ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: _isLoading
-              ? null
-              : () => Navigator.pushReplacementNamed(context, '/login'),
-          child: const Text(
-            'Already have an account? Sign in',
-            style: TextStyle(color: Colors.green),
+        if (widget.verifiedSession == null) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _isLoading
+                ? null
+                : () => Navigator.pushReplacementNamed(context, '/login'),
+            child: const Text(
+              'Already have an account? Sign in',
+              style: TextStyle(color: Colors.green),
+            ),
           ),
-        ),
+        ],
         if (_errorMessage != null) ...[
           const SizedBox(height: 16),
           ErrorBanner(message: _errorMessage!),

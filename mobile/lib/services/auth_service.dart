@@ -12,7 +12,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthService {
   AuthService({FlutterSecureStorage? storage, Dio? dio})
       : _storage = storage ?? const FlutterSecureStorage(),
-        _dio = dio ?? Dio();
+        // Without a connect timeout, a wrong or unreachable host sits silent
+        // until the OS gives up (often a minute or more), which reads as a
+        // button that spins forever. Fail in seconds instead.
+        _dio =
+            dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 8)));
 
   final FlutterSecureStorage _storage;
   final Dio _dio;
@@ -25,6 +29,17 @@ class AuthService {
     final raw = dotenv.env['BACKEND_API_BASE_URL'] ?? '';
     return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
   }
+
+  /// The Supabase access token of the session in memory, if there is one.
+  ///
+  /// Screens read the session through this rather than reaching for
+  /// `Supabase.instance`, so tests can drive them without a live Supabase.
+  static String? get currentSessionToken =>
+      Supabase.instance.client.auth.currentSession?.accessToken;
+
+  /// The phone number of the session in memory, if there is one.
+  static String? get currentSessionPhone =>
+      Supabase.instance.client.auth.currentSession?.user.phone;
 
   // Send a login/registration code to [phone], which must already be in E.164.
   Future<void> sendOtp(String phone) async {
@@ -64,8 +79,9 @@ class AuthService {
   /// Returns true when registered, false on a definitive 404, and null when
   /// the backend could not be reached. Callers must not treat null as false:
   /// the session is still valid, it just is not known whether the user has
-  /// completed registration.
-  Future<bool?> isRegistered(String token) async {
+  /// completed registration. [timeout] is shortened by [sessionGateFor],
+  /// which runs on every launch.
+  Future<bool?> isRegistered(String token, {Duration? timeout}) async {
     try {
       final response = await _dio.get(
         '$_baseUrl/api/auth/me',
@@ -74,7 +90,7 @@ class AuthService {
             'Authorization': 'Bearer $token',
             'Content-Type': 'application/json',
           },
-          receiveTimeout: const Duration(seconds: 8),
+          receiveTimeout: timeout ?? const Duration(seconds: 8),
           sendTimeout: const Duration(seconds: 8),
         ),
       );
@@ -140,6 +156,100 @@ class AuthService {
       return null;
     }
   }
+
+  /// Throw away a session that was left behind by an abandoned registration.
+  ///
+  /// Mirrors profile_screen's logout: the local keys are cleared whether or
+  /// not the sign-out call itself survives, otherwise the next launch restores
+  /// a session the user believes is gone.
+  Future<void> discardSession() async {
+    try {
+      await Supabase.instance.client.auth.signOut();
+    } catch (e) {
+      debugPrint('discardSession: signOut failed: $e');
+    }
+    try {
+      await _storage.delete(key: _kToken);
+      await _storage.delete(key: _kUserId);
+      await _storage.delete(key: _kRole);
+    } catch (e) {
+      debugPrint('discardSession: clearing local keys failed: $e');
+    }
+  }
+}
+
+/// Whether a live session may open the app.
+enum SessionGate {
+  /// The backend confirmed an account behind this session.
+  open,
+
+  /// The backend says there is no account behind this session; it has been
+  /// discarded, so the app starts from scratch.
+  startOver,
+
+  /// The backend did not answer within this caller's budget. Nothing has been
+  /// discarded and the caller should stay where it is. Only bounded callers
+  /// (screens that merely re-check a session they are not responsible for)
+  /// get this; a launch waits instead.
+  noAnswer,
+}
+
+/// Judge a session found on disk before letting it into the app.
+///
+/// A session only proves the phone number, so it can outlive the registration
+/// it was created for — which means it proves nothing about an account. The
+/// backend has to confirm one:
+///
+/// - confirmed → [SessionGate.open]
+/// - the backend reports no account → [SessionGate.startOver], with the session
+///   discarded.
+///
+/// "Could not reach the backend" is deliberately *not* an account verdict. An
+/// unreachable backend says nothing about whether the account exists, and
+/// treating it as "no account" is how a signed-in user gets silently thrown
+/// out — and how a half-registered user would walk into home if it were read
+/// the other way. So the check is retried until the backend gives a real
+/// answer: only `true` opens the app, only a definitive "no account" discards
+/// the session.
+///
+/// [attempts] bounds that waiting for callers that must not block (screens
+/// re-checking a session they did not create); they get [SessionGate.noAnswer]
+/// instead of a wrong verdict. Launch leaves it unbounded.
+/// [auth] and [wait] are injectable for tests.
+Future<SessionGate> sessionGateFor(
+  String token, {
+  AuthService? auth,
+  int? attempts,
+  Duration retryDelay = const Duration(seconds: 3),
+  Future<void> Function(Duration)? wait,
+}) async {
+  final service = auth ?? AuthService();
+  final sleep = wait ?? (d) => Future<void>.delayed(d);
+
+  var made = 0;
+  while (attempts == null || made < attempts) {
+    made++;
+
+    bool? registered;
+    try {
+      registered = await service.isRegistered(token);
+    } catch (e) {
+      debugPrint('sessionGateFor: check failed: $e');
+      registered = null;
+    }
+
+    if (registered == true) return SessionGate.open;
+    if (registered == false) {
+      await service.discardSession();
+      return SessionGate.startOver;
+    }
+
+    debugPrint('sessionGateFor: no answer from the backend, retrying');
+    if (attempts != null && made >= attempts) break;
+    await sleep(retryDelay);
+  }
+
+  return SessionGate.noAnswer;
 }
 
 /// An auth failure with a message safe to show to the user.

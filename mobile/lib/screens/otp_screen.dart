@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../widgets/auth_page.dart';
 import '../widgets/error_banner.dart';
 import '../widgets/otp_input_field.dart';
+import 'register_screen.dart';
 import 'role_selection_screen.dart';
 
 /// OTP entry and verification, shared by sign-in and registration.
@@ -21,6 +22,7 @@ class OtpScreen extends StatefulWidget {
     required this.phone,
     this.isRegistration = false,
     this.draft,
+    this.authService,
   });
 
   /// Phone number in E.164, as supplied by the preceding screen.
@@ -33,13 +35,16 @@ class OtpScreen extends StatefulWidget {
   /// endpoint. Required when [isRegistration] is set.
   final RegistrationDraft? draft;
 
+  /// Overridable so tests can drive the post-verify routing.
+  final AuthService? authService;
+
   @override
   OtpScreenState createState() => OtpScreenState();
 }
 
 class OtpScreenState extends State<OtpScreen> {
   final _otpKey = GlobalKey<OtpInputFieldState>();
-  final _auth = AuthService();
+  late final AuthService _auth = widget.authService ?? AuthService();
 
   static const _otpLength = 6;
   static const _resendCooldown = Duration(seconds: 60);
@@ -139,19 +144,28 @@ class OtpScreenState extends State<OtpScreen> {
 
       if (!mounted) return;
 
-      // A returning user on the sign-in screen has no draft on file, so send
-      // them back to the register screen rather than submitting an empty one.
-      if (registered == false && widget.draft != null) {
-        return _goToRoleSelection(token);
+      // Only a confirmed account opens the app. Without an answer there may be
+      // no account behind this session at all, and that is exactly what must
+      // not reach home — so "not sure" finishes registration instead, where the
+      // register endpoint answers 409 if the number turns out to be taken.
+      if (registered != true) {
+        debugPrint('no confirmed account for ${widget.phone} ($registered), '
+            'continuing to registration');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RegisterScreen(
+              phone: widget.phone,
+              verifiedSession: token,
+            ),
+          ),
+        );
+        return;
       }
 
-      // registered == true, or the check was inconclusive (usually the backend
-      // is unreachable). The OTP verified, so the session is valid and there
+      // The backend vouched for this phone: it is a returning user and there
       // is nothing to re-authenticate. Do NOT sign out here: that discards a
       // good session and bounces the user back to the phone number step.
-      if (registered == null) {
-        debugPrint('registration check inconclusive, continuing to home');
-      }
       setState(() => _isLoading = false);
       Navigator.pushReplacementNamed(context, '/home');
     } on AuthFailure catch (e) {

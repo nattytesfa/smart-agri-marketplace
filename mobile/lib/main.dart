@@ -13,6 +13,7 @@ import 'data/models/listing_model.dart';
 import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/role_selection_screen.dart';
+import 'screens/startup_screen.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -47,6 +48,26 @@ Future<void> _waitForSessionRestore() async {
   }
 }
 
+/// Where the app should start, given the session restored from disk.
+///
+/// A session on disk only proves a phone number, so the first route has to be
+/// decided by the backend, and it has to be decided before any other screen
+/// can act on that session:
+///
+/// - no session: the welcome screen, exactly as for a new user.
+/// - a session: the connecting screen, which waits for the backend to say
+///   whether there is an account behind it and then leaves for home or the
+///   welcome screen.
+///
+/// Nothing is decided from the token alone here, so a launch never signs a user
+/// out because the network was slow, and never lets an unfinished registration
+/// through.
+///
+/// Token comes in as a parameter so both cases are testable without a real
+/// Supabase session.
+String resolveInitialRouteForSession(String? token) =>
+    token == null ? '/login' : '/startup';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
@@ -57,6 +78,13 @@ void main() async {
   );
 
   await _waitForSessionRestore();
+
+  // Landing on the connecting screen (rather than deciding here) keeps the
+  // app's first frame honest: a restored session may be all that is left of an
+  // abandoned registration, and only the backend can tell the difference.
+  final initialRoute = resolveInitialRouteForSession(
+    Supabase.instance.client.auth.currentSession?.accessToken,
+  );
 
   // Initialize Hive
   await Hive.initFlutter();
@@ -83,7 +111,7 @@ void main() async {
     await storage.write(key: 'supabase_token', value: session.accessToken);
   });
 
-  runApp(const MyApp());
+  runApp(MyApp(initialRoute: initialRoute));
 
   Connectivity()
       .onConnectivityChanged
@@ -95,7 +123,10 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.initialRoute});
+
+  /// Decided in main(), where the backend can be asked about the session.
+  final String initialRoute;
 
   @override
   Widget build(BuildContext context) {
@@ -107,10 +138,11 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
       ),
-      initialRoute: _initialRoute(),
+      initialRoute: initialRoute,
       routes: {
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
+        '/startup': (context) => const StartupScreen(),
         '/home': (context) => const RoleBasedHomeScreen(),
         '/role_selection': (context) {
           final session = Supabase.instance.client.auth.currentSession;
@@ -121,7 +153,4 @@ class MyApp extends StatelessWidget {
       },
     );
   }
-
-  static String _initialRoute() =>
-      Supabase.instance.client.auth.currentSession != null ? '/home' : '/login';
 }

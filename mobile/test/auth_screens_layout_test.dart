@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smart_agri_marketplace/data/models/registration_draft.dart';
 import 'package:smart_agri_marketplace/screens/login_screen.dart';
 import 'package:smart_agri_marketplace/screens/otp_screen.dart';
 import 'package:smart_agri_marketplace/screens/register_screen.dart';
+import 'package:smart_agri_marketplace/screens/role_selection_screen.dart';
 import 'package:smart_agri_marketplace/services/auth_service.dart';
+import 'package:smart_agri_marketplace/widgets/auth_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Viewport from the overflow report: what remains after the keyboard opens
@@ -14,10 +17,14 @@ const _tallPhone = Size(375, 812);
 
 /// Records what the screen asked for without touching the network.
 class FakeAuthService extends AuthService {
-  FakeAuthService({this.registered});
+  FakeAuthService({this.registered, this.accountExists});
 
   /// Result of the duplicate-number lookup. null models an inconclusive check.
   final bool? registered;
+
+  /// What GET /api/auth/me says after the code verifies. null models an
+  /// inconclusive check (usually the backend being unreachable).
+  final bool? accountExists;
 
   int sendOtpCalls = 0;
   final List<String> checkedPhones = [];
@@ -27,6 +34,13 @@ class FakeAuthService extends AuthService {
     checkedPhones.add(phone);
     return registered;
   }
+
+  @override
+  Future<bool?> isRegistered(String token, {Duration? timeout}) async =>
+      accountExists;
+
+  @override
+  Future<String> verifyOtp(String phone, String otp) async => 'test-token';
 
   @override
   Future<void> sendOtp(String phone) async {
@@ -50,11 +64,16 @@ Future<void> _pump(WidgetTester tester, Widget screen, Size size) async {
 }
 
 /// Fills the fields the register screen requires before it will send a code.
-Future<void> _fillRegistration(WidgetTester tester) async {
+/// [fillPhone] is false when the number is already fixed to the session and
+/// the field is read-only.
+Future<void> _fillRegistration(WidgetTester tester,
+    {bool fillPhone = true}) async {
   await tester.enterText(
       find.widgetWithText(TextField, 'Full name'), 'Abebe B');
-  await tester.enterText(
-      find.widgetWithText(TextField, 'Phone Number'), '0912345678');
+  if (fillPhone) {
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Phone Number'), '0912345678');
+  }
 
   await tester
       .ensureVisible(find.byType(DropdownButtonFormField<String>).first);
@@ -70,7 +89,7 @@ Future<void> _fillRegistration(WidgetTester tester) async {
 
   await tester.enterText(find.byType(DropdownMenu<String>), 'Kebele 01');
 
-  await tester.ensureVisible(find.text('Send OTP'));
+  await tester.ensureVisible(find.byType(AuthPrimaryButton));
 }
 
 void main() {
@@ -96,6 +115,57 @@ void main() {
       expect(find.text('Welcome back'), findsOneWidget);
       expect(find.text('Send OTP'), findsOneWidget);
       expect(find.text('New here? Create an account'), findsOneWidget);
+    });
+
+    Future<void> enterPhone(WidgetTester tester) async {
+      await tester.enterText(
+          find.widgetWithText(TextField, 'Phone Number'), '0912345678');
+      await tester.ensureVisible(find.byType(AuthPrimaryButton));
+      await tester.tap(find.byType(AuthPrimaryButton));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('checks the number before sending a code', (tester) async {
+      final auth = FakeAuthService(registered: true);
+      await _pump(tester, LoginScreen(authService: auth), _tallPhone);
+
+      await enterPhone(tester);
+
+      expect(auth.checkedPhones, ['+251912345678']);
+      expect(auth.sendOtpCalls, 1);
+      expect(find.byType(OtpScreen), findsOneWidget);
+    });
+
+    testWidgets('refuses to text a number that is not registered',
+        (tester) async {
+      final auth = FakeAuthService(registered: false);
+      await _pump(tester, LoginScreen(authService: auth), _tallPhone);
+
+      await enterPhone(tester);
+
+      expect(
+        find.text(
+            'This number is not registered yet. Create an account first.'),
+        findsOneWidget,
+      );
+      expect(auth.checkedPhones, ['+251912345678']);
+      expect(auth.sendOtpCalls, 0);
+      expect(find.byType(OtpScreen), findsNothing);
+    });
+
+    testWidgets('stops when the lookup cannot be completed', (tester) async {
+      final auth = FakeAuthService();
+      await _pump(tester, LoginScreen(authService: auth), _tallPhone);
+
+      await enterPhone(tester);
+
+      expect(
+        find.text(
+            'Could not check this number. Check your connection and try again.'),
+        findsOneWidget,
+      );
+      expect(auth.sendOtpCalls, 0);
+      expect(find.byType(OtpScreen), findsNothing);
     });
   });
 
@@ -250,6 +320,113 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RegisterScreen), findsOneWidget);
+    });
+  });
+
+  group('after the code verifies', () {
+    // Six digits, which is what the field waits for before it submits.
+    Future<void> enterCode(WidgetTester tester) async {
+      await tester.enterText(find.byType(TextField).first, '123456');
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an unregistered number is sent to registration, not home',
+        (tester) async {
+      await _pump(
+        tester,
+        OtpScreen(
+          phone: '+251912345678',
+          authService: FakeAuthService(accountExists: false),
+        ),
+        _tallPhone,
+      );
+
+      await enterCode(tester);
+
+      // The number proved no account behind it, so letting it into home would
+      // mean using the app without ever registering.
+      expect(find.byType(RegisterScreen), findsOneWidget);
+      expect(find.byType(OtpScreen), findsNothing);
+      expect(find.text('home'), findsNothing);
+    });
+
+    testWidgets('registration started this way carries on to role selection',
+        (tester) async {
+      await _pump(
+        tester,
+        OtpScreen(
+          phone: '+251912345678',
+          authService: FakeAuthService(accountExists: false),
+        ),
+        _tallPhone,
+      );
+      await enterCode(tester);
+
+      await _fillRegistration(tester, fillPhone: false);
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RoleSelectionScreen), findsOneWidget);
+      expect(find.text('Send OTP'), findsNothing);
+    });
+
+    testWidgets('a registered number goes to home', (tester) async {
+      await _pump(
+        tester,
+        OtpScreen(
+          phone: '+251912345678',
+          authService: FakeAuthService(accountExists: true),
+        ),
+        _tallPhone,
+      );
+
+      await enterCode(tester);
+
+      expect(find.text('home'), findsOneWidget);
+      expect(find.byType(RegisterScreen), findsNothing);
+    });
+
+    testWidgets('an inconclusive check cannot open home', (tester) async {
+      await _pump(
+        tester,
+        OtpScreen(
+          phone: '+251912345678',
+          authService: FakeAuthService(accountExists: null),
+        ),
+        _tallPhone,
+      );
+
+      await enterCode(tester);
+
+      // An unconfirmed session may have no account behind it, so it finishes
+      // registration instead — and the register endpoint answers 409 if the
+      // number turns out to be taken after all.
+      expect(find.byType(RegisterScreen), findsOneWidget);
+      expect(find.text('home'), findsNothing);
+    });
+  });
+
+  group('role selection screen', () {
+    testWidgets('fits a 375px wide phone', (tester) async {
+      await _pump(
+        tester,
+        const RoleSelectionScreen(
+          phone: '+251912345678',
+          token: 'test-token',
+          draft: RegistrationDraft(
+            fullName: 'Abebe Bekele',
+            region: 'Amhara',
+            zone: 'East Gojam',
+            kebele: 'Kewet',
+          ),
+        ),
+        _tallPhone,
+      );
+
+      // Farmer is the default, so the storage dropdown is on screen and was
+      // the widest control on this page.
+      expect(tester.takeException(), isNull);
+      expect(find.text('How will you use the platform?'), findsOneWidget);
     });
   });
 }
