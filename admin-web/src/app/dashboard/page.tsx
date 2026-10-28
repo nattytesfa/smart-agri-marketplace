@@ -7,7 +7,7 @@ import PageHeader from '../../components/PageHeader';
 import Icon, { type IconName } from '../../components/Icon';
 import StatusBadge from '../../components/StatusBadge';
 import { supabase } from '../../lib/supabaseClient';
-import { adminRequest, useAsyncData } from '../../hooks/useAdminData';
+import { adminRequest, useAsyncData, useAdminAutoRefresh } from '../../hooks/useAdminData';
 import {
   escrowTone,
   formatCurrency,
@@ -87,7 +87,7 @@ async function loadDashboard(): Promise<DashboardData> {
 }
 
 const QUICK_ACTIONS: { href: string; icon: IconName; label: string; meta: string }[] = [
-  { href: '/users', icon: 'shield-check', label: 'Verify users', meta: 'Fayda ID checks' },
+  { href: '/users', icon: 'shield-check', label: 'View users', meta: 'Fayda verification status' },
   { href: '/transactions', icon: 'wallet', label: 'Review escrow', meta: 'Release or refund' },
   { href: '/listings', icon: 'package', label: 'Moderate listings', meta: 'Remove bad items' },
   { href: '/analytics-heatmap', icon: 'trending-up', label: 'Open heatmap', meta: 'Regional supply' },
@@ -98,6 +98,7 @@ export default function DashboardPage() {
     loadDashboard,
     []
   );
+  useAdminAutoRefresh(reload);
 
   const stats = useMemo(() => {
     const escrowLocked = data?.recentTransactions.filter(

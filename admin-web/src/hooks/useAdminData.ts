@@ -138,6 +138,30 @@ export function useAsyncData<T>(
   return { data, error, loading, initialLoading, reload, setData };
 }
 
+/** Refresh visible verification views on focus and every 30 seconds. */
+export function useAdminAutoRefresh(reload: () => Promise<void>) {
+  useEffect(() => {
+    let inFlight = false;
+    const refresh = async () => {
+      if (document.visibilityState !== 'visible' || inFlight) return;
+      inFlight = true;
+      try {
+        await reload();
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [reload]);
+}
+
 /** Calls an authenticated admin backend endpoint and returns its JSON body. */
 export async function adminRequest<T>(path: string, config?: object): Promise<T> {
   const api = await getBackendClient();

@@ -2,15 +2,13 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import AppShell, { ErrorPanel } from '../../../components/AppShell';
 import PageHeader from '../../../components/PageHeader';
 import Icon from '../../../components/Icon';
 import StatusBadge from '../../../components/StatusBadge';
-import ConfirmDialog from '../../../components/ConfirmDialog';
 import { supabase } from '../../../lib/supabaseClient';
-import { adminRequest, useAsyncData } from '../../../hooks/useAdminData';
-import { useToast } from '../../../components/Toast';
+import { adminRequest, useAsyncData, useAdminAutoRefresh } from '../../../hooks/useAdminData';
 import {
   formatDate,
   formatDateTime,
@@ -24,6 +22,8 @@ interface PendingUser {
   user_id: string;
   phone_number: string;
   fayda_id: string;
+  fayda_verified: boolean;
+  fayda_verified_at: string | null;
   role: string;
   created_at: string;
   farm_size_hectares: number | null;
@@ -45,37 +45,7 @@ interface UserDetail {
 }
 
 async function loadUserDetail(userId: string): Promise<UserDetail> {
-  // The admin API only exposes the pending queue, so fall back to it to resolve
-  // the applicant record rather than inventing a second endpoint.
-  let pending: PendingUser | null = null;
-  try {
-    const queue = await adminRequest<PendingUser[]>('/api/admin/users');
-    pending = queue.find((entry) => entry.user_id === userId) ?? null;
-  } catch {
-    pending = null;
-  }
-
-  if (!pending) {
-    const { data } = await supabase
-      .from('users')
-      .select('user_id, phone_number, fayda_id, role, created_at')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (data) {
-      pending = {
-        user_id: data.user_id,
-        phone_number: data.phone_number,
-        fayda_id: data.fayda_id,
-        role: data.role,
-        created_at: data.created_at,
-        farm_size_hectares: null,
-        storage_type: null,
-        business_name: null,
-        buyer_type: null,
-      };
-    }
-  }
+  const pending = await adminRequest<PendingUser>(`/api/admin/users/${userId}`);
 
   const [subscriptionResult, listingsResult, transactionsResult] = await Promise.all([
     supabase
@@ -106,15 +76,13 @@ async function loadUserDetail(userId: string): Promise<UserDetail> {
 export default function UserDetailPage() {
   const params = useParams();
   const userId = typeof params?.id === 'string' ? params.id : '';
-  const { notify } = useToast();
 
   const { data, error, loading, initialLoading, reload } = useAsyncData<UserDetail>(
     () => loadUserDetail(userId),
     [userId]
   );
 
-  const [confirming, setConfirming] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  useAdminAutoRefresh(reload);
 
   const user = data?.pending;
 
@@ -122,6 +90,8 @@ export default function UserDetailPage() {
     if (!user) return [];
     return [
       { label: 'Fayda ID', value: user.fayda_id || 'Not supplied' },
+      { label: 'Verification', value: user.fayda_verified ? 'Verified' : 'Awaiting verification' },
+      { label: 'Verified at', value: user.fayda_verified_at ? formatDateTime(user.fayda_verified_at) : '—' },
       { label: 'Role', value: titleCase(user.role) },
       { label: 'Phone number', value: user.phone_number || 'Not supplied' },
       { label: 'Registered', value: formatDateTime(user.created_at) },
@@ -135,29 +105,6 @@ export default function UserDetailPage() {
     ];
   }, [user]);
 
-  const approve = async () => {
-    setSubmitting(true);
-    try {
-      await adminRequest(`/api/admin/users/${userId}/verify`, { method: 'POST' });
-      notify({
-        tone: 'success',
-        title: 'User verified',
-        message: 'Their Fayda ID is now confirmed on the platform.',
-      });
-      setConfirming(false);
-      await reload();
-    } catch (err: any) {
-      notify({
-        tone: 'danger',
-        title: 'Verification failed',
-        message: err?.response?.data?.error || 'The backend rejected the request.',
-      });
-      setConfirming(false);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <AppShell
       title="User details"
@@ -166,7 +113,7 @@ export default function UserDetailPage() {
         <>
           <Link href="/users" className="btn btn--secondary btn--sm">
             <Icon name="arrow-left" size={15} />
-            Back to queue
+            Back to users
           </Link>
           <button
             type="button"
@@ -186,18 +133,6 @@ export default function UserDetailPage() {
         eyebrowIcon="shield-check"
         title={user ? user.business_name || user.phone_number || 'Applicant' : 'Applicant'}
         description="A consolidated view of this account across verification, subscriptions and marketplace activity."
-        actions={
-          user ? (
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => setConfirming(true)}
-            >
-              <Icon name="check-circle" size={16} />
-              Approve verification
-            </button>
-          ) : null
-        }
       />
 
       {error ? (
@@ -211,11 +146,10 @@ export default function UserDetailPage() {
               </span>
               <p className="empty__title">User not found</p>
               <p className="empty__message">
-                No account matches <code>{userId || 'this identifier'}</code>. It may have
-                already been verified and removed from the pending queue.
+                No account matches <code>{userId || 'this identifier'}</code>.
               </p>
               <Link href="/users" className="btn btn--secondary" style={{ marginTop: 'var(--space-2)' }}>
-                Return to verification queue
+                Return to users
               </Link>
             </div>
           </div>
@@ -235,9 +169,9 @@ export default function UserDetailPage() {
                   <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <StatusBadge status={user?.role ?? 'unknown'} tone={roleTone(user?.role)} />
                     <StatusBadge
-                      status="pending"
-                      tone="warning"
-                      label="Awaiting verification"
+                      status={user?.fayda_verified ? 'verified' : 'pending'}
+                      tone={user?.fayda_verified ? 'success' : 'warning'}
+                      label={user?.fayda_verified ? 'Fayda verified' : 'Awaiting verification'}
                     />
                   </div>
                 </div>
@@ -327,17 +261,6 @@ export default function UserDetailPage() {
         </div>
       )}
 
-      <ConfirmDialog
-        open={confirming}
-        busy={submitting}
-        title="Approve this applicant?"
-        message="Their Fayda ID will be marked as verified and they will be able to transact on the platform. This cannot be undone."
-        confirmLabel={submitting ? 'Approving…' : 'Approve'}
-        onConfirm={approve}
-        onCancel={() => {
-          if (!submitting) setConfirming(false);
-        }}
-      />
     </AppShell>
   );
 }

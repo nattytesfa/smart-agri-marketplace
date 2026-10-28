@@ -1,22 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import AppShell, { ErrorPanel } from '../../components/AppShell';
 import PageHeader from '../../components/PageHeader';
 import DataTable, { type Column } from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
-import ConfirmDialog from '../../components/ConfirmDialog';
 import Pagination from '../../components/Pagination';
 import Icon from '../../components/Icon';
-import { useToast } from '../../components/Toast';
-import { adminRequest, useAsyncData } from '../../hooks/useAdminData';
+import { adminRequest, useAsyncData, useAdminAutoRefresh } from '../../hooks/useAdminData';
 import { formatDate, formatNumber, initials, roleTone } from '../../lib/format';
 
 interface PendingUser {
   user_id: string;
   phone_number: string;
   fayda_id: string;
+  fayda_verified: boolean;
+  fayda_verified_at: string | null;
   role: string;
   created_at: string;
   farm_size_hectares: number | null;
@@ -35,7 +35,7 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admins' },
 ];
 
-const loadUsers = () => adminRequest<PendingUser[]>('/api/admin/users');
+const loadUsers = () => adminRequest<PendingUser[]>('/api/admin/users?status=all');
 
 function profileSummary(user: PendingUser): string {
   if (user.role === 'farmer') {
@@ -54,21 +54,16 @@ function profileSummary(user: PendingUser): string {
 }
 
 export default function UsersPage() {
-  const { notify } = useToast();
   const { data, error, loading, initialLoading, reload } = useAsyncData<PendingUser[]>(
     loadUsers,
     []
   );
 
   const [search, setSearch] = useState('');
+  const [verification, setVerification] = useState('pending');
+  useAdminAutoRefresh(reload);
   const [role, setRole] = useState('all');
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [pendingAction, setPendingAction] = useState<{
-    kind: 'single' | 'bulk';
-    userIds: string[];
-  } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
   const users = useMemo(() => data ?? [], [data]);
 
@@ -76,6 +71,8 @@ export default function UsersPage() {
     const query = search.trim().toLowerCase();
 
     return users.filter((user) => {
+      if (verification === 'pending' && user.fayda_verified) return false;
+      if (verification === 'verified' && !user.fayda_verified) return false;
       const matchesRole = role === 'all' || user.role === role;
       if (!matchesRole) return false;
       if (!query) return true;
@@ -87,7 +84,7 @@ export default function UsersPage() {
         (user.user_id ?? '').toLowerCase().includes(query)
       );
     });
-  }, [users, search, role]);
+  }, [users, search, role, verification]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -95,67 +92,6 @@ export default function UsersPage() {
     () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     [filtered, safePage]
   );
-
-  const toggleRow = useCallback((key: string) => {
-    setSelected((current) =>
-      current.includes(key) ? current.filter((id) => id !== key) : [...current, key]
-    );
-  }, []);
-
-  const toggleAll = useCallback(
-    (keys: string[], checked: boolean) => {
-      setSelected((current) => {
-        if (checked) return Array.from(new Set([...current, ...keys]));
-        const remove = new Set(keys);
-        return current.filter((id) => !remove.has(id));
-      });
-    },
-    []
-  );
-
-  const confirmVerification = useCallback(async () => {
-    if (!pendingAction) return;
-    setSubmitting(true);
-
-    try {
-      const results = await Promise.allSettled(
-        pendingAction.userIds.map((userId) =>
-          adminRequest(`/api/admin/users/${userId}/verify`, { method: 'POST' })
-        )
-      );
-
-      const succeeded = results.filter((result) => result.status === 'fulfilled').length;
-      const failed = results.length - succeeded;
-
-      if (succeeded > 0) {
-        notify({
-          tone: 'success',
-          title:
-            pendingAction.kind === 'bulk'
-              ? `${succeeded} user${succeeded === 1 ? '' : 's'} verified`
-              : 'User verified',
-          message:
-            failed > 0
-              ? `${failed} request${failed === 1 ? '' : 's'} failed and need retrying.`
-              : 'Their Fayda ID is now confirmed on the platform.',
-        });
-      }
-
-      if (failed > 0 && succeeded === 0) {
-        notify({
-          tone: 'danger',
-          title: 'Verification failed',
-          message: 'The backend rejected the request. Please try again.',
-        });
-      }
-
-      setSelected([]);
-      await reload();
-    } finally {
-      setSubmitting(false);
-      setPendingAction(null);
-    }
-  }, [pendingAction, notify, reload]);
 
   const columns: Column<PendingUser>[] = [
     {
@@ -188,6 +124,17 @@ export default function UsersPage() {
       render: (user) => <StatusBadge status={user.role} tone={roleTone(user.role)} />,
     },
     {
+      key: 'verification',
+      header: 'Verification',
+      render: (user) => (
+        <StatusBadge
+          status={user.fayda_verified ? 'verified' : 'pending'}
+          tone={user.fayda_verified ? 'success' : 'warning'}
+          label={user.fayda_verified ? 'Fayda verified' : 'Awaiting verification'}
+        />
+      ),
+    },
+    {
       key: 'profile',
       header: 'Profile',
       render: (user) => <span className="table__cell--muted">{profileSummary(user)}</span>,
@@ -214,27 +161,15 @@ export default function UsersPage() {
           >
             <Icon name="eye" size={16} />
           </Link>
-          <button
-            type="button"
-            className="btn btn--success-soft btn--sm"
-            onClick={() =>
-              setPendingAction({ kind: 'single', userIds: [user.user_id] })
-            }
-          >
-            <Icon name="check" size={15} />
-            Approve
-          </button>
         </span>
       ),
     },
   ];
 
-  const selectedCount = selected.length;
-
   return (
     <AppShell
       title="User Verification"
-      subtitle="Cross-reference Fayda IDs before granting platform access"
+      subtitle="View user profiles and Fayda verification status"
       topbarActions={
         <button
           type="button"
@@ -250,19 +185,8 @@ export default function UsersPage() {
       <PageHeader
         eyebrow="Operations"
         eyebrowIcon="shield-check"
-        title="Pending Fayda verifications"
-        description="Every applicant listed here is waiting on a national ID cross-reference. Approving grants the account full access to the marketplace."
-        actions={
-          <button
-            type="button"
-            className="btn btn--primary"
-            disabled={selectedCount === 0 || loading}
-            onClick={() => setPendingAction({ kind: 'bulk', userIds: selected })}
-          >
-            <Icon name="check-circle" size={16} />
-            {selectedCount > 0 ? `Approve ${selectedCount} selected` : 'Batch approve'}
-          </button>
-        }
+        title="Fayda verifications"
+        description="Review pending accounts and identities verified through Fayda in the mobile app."
       />
 
       {error ? (
@@ -286,6 +210,20 @@ export default function UsersPage() {
             </div>
 
             <div className="toolbar__filters">
+              <label className="u-visually-hidden" htmlFor="verification-filter">Filter by verification</label>
+              <select
+                id="verification-filter"
+                className="select"
+                value={verification}
+                onChange={(event) => {
+                  setVerification(event.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="pending">Pending verification</option>
+                <option value="verified">Verified</option>
+                <option value="all">All verification statuses</option>
+              </select>
               <label className="u-visually-hidden" htmlFor="role-filter">
                 Filter by role
               </label>
@@ -308,8 +246,7 @@ export default function UsersPage() {
             </div>
 
             <span className="toolbar__count">
-              {formatNumber(filtered.length)} of {formatNumber(users.length)} awaiting
-              verification
+              {formatNumber(filtered.length)} of {formatNumber(users.length)} accounts
             </span>
           </div>
 
@@ -318,14 +255,10 @@ export default function UsersPage() {
             data={visible}
             keyExtractor={(user) => user.user_id}
             loading={initialLoading}
-            selectable
-            selectedKeys={selected}
-            onToggleRow={toggleRow}
-            onToggleAll={toggleAll}
             emptyIcon="search"
             emptyTitle="No matching applicants"
-            emptyMessage="Try a different search term, or clear the role filter to see everyone waiting for verification."
-            caption="Users awaiting Fayda ID verification"
+            emptyMessage="Try another search term or change the verification and role filters."
+            caption="User Fayda verification status"
           />
 
           <div className="card__footer">
@@ -343,26 +276,6 @@ export default function UsersPage() {
         </div>
       )}
 
-      <ConfirmDialog
-        open={pendingAction !== null}
-        variant="default"
-        busy={submitting}
-        title={
-          pendingAction?.kind === 'bulk'
-            ? `Approve ${pendingAction.userIds.length} applicants?`
-            : 'Approve this applicant?'
-        }
-        message={
-          pendingAction?.kind === 'bulk'
-            ? 'Their Fayda IDs will be marked as verified and they will be able to transact on the platform. This cannot be undone.'
-            : "This marks the applicant's Fayda ID as verified and grants them full platform access. This cannot be undone."
-        }
-        confirmLabel={submitting ? 'Approving…' : 'Approve'}
-        onConfirm={confirmVerification}
-        onCancel={() => {
-          if (!submitting) setPendingAction(null);
-        }}
-      />
     </AppShell>
   );
 }

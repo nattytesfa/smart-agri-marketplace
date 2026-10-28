@@ -1,32 +1,33 @@
 const pool = require('../../config/db');
 
 // Get all users with pending verification
-const getPendingUsers = async () => {
+const getPendingUsers = async (status = 'pending') => {
   const query = `
-    SELECT u.user_id, u.phone_number, u.fayda_id, u.role, u.created_at,
+    SELECT u.user_id, u.phone_number, u.fayda_id, u.fayda_verified,
+           u.fayda_verified_at, u.role, u.created_at,
            fp.farm_size_hectares, fp.storage_type,
            bp.business_name, bp.buyer_type
     FROM users u
     LEFT JOIN farmer_profiles fp ON u.user_id = fp.farmer_id
     LEFT JOIN buyer_profiles bp ON u.user_id = bp.buyer_id
-    WHERE u.fayda_verified = false
+    WHERE ($1::boolean IS NULL OR u.fayda_verified = $1)
     ORDER BY u.created_at DESC
   `;
-  const result = await pool.query(query);
+  const result = await pool.query(query, [status === 'all' ? null : status === 'verified']);
   return result.rows;
 };
 
-// Verify a user
-const verifyUser = async (userId) => {
-  const query = `
-    UPDATE users 
-    SET fayda_verified = true,
-        fayda_verified_at = NOW()
-    WHERE user_id = $1
-    RETURNING user_id, fayda_verified, fayda_verified_at
-  `;
-  const result = await pool.query(query, [userId]);
-  return result.rows[0];
+const getUser = async (userId) => {
+  const result = await pool.query(`
+    SELECT u.user_id, u.phone_number, u.fayda_id, u.fayda_verified,
+           u.fayda_verified_at, u.role, u.created_at,
+           fp.farm_size_hectares, fp.storage_type,
+           bp.business_name, bp.buyer_type
+    FROM users u
+    LEFT JOIN farmer_profiles fp ON u.user_id = fp.farmer_id
+    LEFT JOIN buyer_profiles bp ON u.user_id = bp.buyer_id
+    WHERE u.user_id = $1`, [userId]);
+  return result.rows[0] || null;
 };
 
 // Get all listings for moderation
@@ -122,8 +123,8 @@ const getHeatmapData = async (region, cropType) => {
 };
 
 module.exports = {
+  getUser,
   getPendingUsers,
-  verifyUser,
   getAllListings,
   deleteListing,
   getAllTransactions,

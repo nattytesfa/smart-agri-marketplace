@@ -3,7 +3,7 @@ const authMiddleware = require('../../middleware/auth');
 const { isAdmin } = require('../../middleware/rbac');
 const {
   getPendingUsers,
-  verifyUser,
+  getUser,
   getListings,
   deleteListing,
   getTransactions,
@@ -19,7 +19,7 @@ router.use(isAdmin);
 
 // User management
 router.get('/users', getPendingUsers);
-router.post('/users/:id/verify', verifyUser);
+router.get('/users/:id', getUser);
 
 // Listing moderation
 router.get('/listings', getListings);

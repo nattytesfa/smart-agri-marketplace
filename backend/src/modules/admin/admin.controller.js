@@ -3,22 +3,27 @@ const adminService = require('./admin.service');
 // GET /api/admin/users – pending users
 const getPendingUsers = async (req, res, next) => {
   try {
-    const users = await adminService.getPendingUsers();
+    const status = req.query.status || 'pending';
+    if (!['pending', 'verified', 'all'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid verification status' });
+    }
+    const users = await adminService.getPendingUsers(status);
+    res.set('Cache-Control', 'no-store');
     res.status(200).json(users);
   } catch (error) {
     next(error);
   }
 };
 
-// POST /api/admin/users/:id/verify
-const verifyUser = async (req, res, next) => {
+const getUser = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const result = await adminService.verifyUser(id);
-    if (!result) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid user ID' });
     }
-    res.status(200).json({ message: 'User verified successfully' });
+    const user = await adminService.getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json(user);
   } catch (error) {
     next(error);
   }
@@ -90,8 +95,8 @@ const getHeatmap = async (req, res, next) => {
 };
 
 module.exports = {
+  getUser,
   getPendingUsers,
-  verifyUser,
   getListings,
   deleteListing,
   getTransactions,
