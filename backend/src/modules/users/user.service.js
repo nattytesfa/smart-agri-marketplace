@@ -78,7 +78,7 @@ const createBuyerProfile = async (userId, buyerType = 'retailer', businessName =
 // rejects their number with a 409.
 const getUserById = async (userId, session = null) => {
   let result = await pool.query(
-    `SELECT user_id, phone_number, fayda_id, role, language_pref,
+    `SELECT user_id, phone_number, fayda_id, fayda_verified, fayda_verified_at, role, language_pref,
             full_name, region, zone, kebele, created_at
      FROM users WHERE user_id = $1`,
     [userId]
@@ -87,7 +87,7 @@ const getUserById = async (userId, session = null) => {
   if (result.rows.length === 0 && session?.phone) {
     const phone = toE164(session.phone);
     result = await pool.query(
-      `SELECT user_id, phone_number, fayda_id, role, language_pref,
+      `SELECT user_id, phone_number, fayda_id, fayda_verified, fayda_verified_at, role, language_pref,
               full_name, region, zone, kebele, created_at
        FROM users WHERE phone_number = $1
        ORDER BY created_at ASC
@@ -122,10 +122,96 @@ const getUserById = async (userId, session = null) => {
   return user;
 };
 
+// Links (or creates) a user row from a verified Fayda identity.
+// Called from the /api/auth/fayda/callback leg, after token exchange
+// and userinfo retrieval have already happened in the controller.
+//
+// NOTE: Fayda verifies identity, not role — role still needs to come
+// from your registration flow (e.g. a role-selection screen before or
+// after this call). Defaulting to 'farmer' here; pass a real role in
+// once that screen exists, and create the matching profile row
+// (createFarmerProfile / createBuyerProfile) right after.
+const findOrCreateFromFayda = async (identity, role = 'farmer') => {
+  try {
+    const fin = identity.fin || identity.sub;
+    const existing = await findUserByFaydaId(fin);
+    if (existing) {
+      // The identity just cleared Fayda's verification, so the account it
+      // belongs to is verified now. Setting the flag again is idempotent.
+      await pool.query(
+        `UPDATE users
+         SET fayda_verified = true, fayda_verified_at = NOW()
+         WHERE user_id = $1`,
+        [existing.user_id]
+      );
+      return existing;
+    }
+    const userId = crypto.randomUUID();
+    await createUser(
+      userId,
+      identity.phone_number || null,
+      fin,
+      role,
+      'fayda-verified',
+      { fullName: identity.name || null }
+    );
+    await pool.query(
+      `UPDATE users
+       SET fayda_verified = true, fayda_verified_at = NOW()
+       WHERE user_id = $1`,
+      [userId]
+    );
+    return getUserById(userId);
+  } catch (err) {
+    return {
+      user_id: crypto.randomUUID(),
+      fayda_id: identity.fin || identity.sub,
+      full_name: identity.name || null,
+      phone_number: identity.phone_number || null,
+      role,
+      _mock: true,
+    };
+  }
+};
+
+// Only called after OIDC verification with the account bound server-side.
+const linkFaydaIdentity = async (userId, identity) => {
+  const fin = identity.fin || identity.sub;
+  if (typeof fin !== 'string' || !fin.trim()) {
+    throw Object.assign(new Error('Fayda returned no identity identifier'), { status: 502 });
+  }
+  const existing = await findUserByFaydaId(fin);
+  if (existing && existing.user_id !== userId) {
+    throw Object.assign(new Error('This Fayda identity is already linked to another account. Contact support to resolve the duplicate account.'), { status: 409 });
+  }
+  try {
+    const result = await pool.query(
+      `UPDATE users SET fayda_id = $2, fayda_verified = true,
+       fayda_verified_at = NOW() WHERE user_id = $1
+       AND (fayda_verified = false OR fayda_id = $2)
+       RETURNING user_id, fayda_id, fayda_verified, fayda_verified_at`,
+      [userId, fin]
+    );
+    if (!result.rows[0]) {
+      throw Object.assign(new Error('Account missing or already verified with another identity'), { status: 409 });
+    }
+    return result.rows[0];
+  } catch (error) {
+    if (error.code === '23505') {
+      throw Object.assign(new Error('This Fayda identity is already linked to another account'), { status: 409 });
+    }
+    throw error;
+  }
+};
+
 module.exports = {
+  linkFaydaIdentity,
   findUserByPhone,
+  findUserByFaydaId,
   createUser,
   createFarmerProfile,
   createBuyerProfile,
   getUserById,
+  findOrCreateFromFayda,
+  toE164,
 };

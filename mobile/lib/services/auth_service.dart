@@ -24,6 +24,8 @@ class AuthService {
   static const _kToken = 'supabase_token';
   static const _kUserId = 'user_id';
   static const _kRole = 'user_role';
+  static const _kFaydaId = 'fayda_id';
+  static const _kFaydaVerified = 'fayda_verified';
 
   String get _baseUrl {
     final raw = dotenv.env['BACKEND_API_BASE_URL'] ?? '';
@@ -40,6 +42,22 @@ class AuthService {
   /// The phone number of the session in memory, if there is one.
   static String? get currentSessionPhone =>
       Supabase.instance.client.auth.currentSession?.user.phone;
+
+  /// One-time browser handoff; never expose the Supabase token in a URL.
+  Future<String> startFaydaVerification(String token) async {
+    final response = await _dio.post(
+      '$_baseUrl/api/auth/fayda/start',
+      options: Options(
+        headers: {'Authorization': 'Bearer $token'},
+        receiveTimeout: const Duration(seconds: 15),
+      ),
+    );
+    final ticket = response.data['ticket'];
+    if (ticket is! String || ticket.isEmpty) {
+      throw const AuthFailure('Could not start verification. Please try again.');
+    }
+    return ticket;
+  }
 
   // Send a login/registration code to [phone], which must already be in E.164.
   Future<void> sendOtp(String phone) async {
@@ -107,6 +125,18 @@ class AuthService {
           if (role != null) {
             await _storage.write(key: _kRole, value: role.toString());
           }
+
+          // The verification state is what the profile page displays, so it is
+          // persisted alongside the rest of the profile fields.
+          final faydaId = data['fayda_id'];
+          if (faydaId != null) {
+            await _storage.write(key: _kFaydaId, value: faydaId.toString());
+          }
+          final faydaVerified = data['fayda_verified'];
+          if (faydaVerified is bool) {
+            await _storage.write(
+                key: _kFaydaVerified, value: faydaVerified.toString());
+          }
         }
         return true;
       }
@@ -172,6 +202,8 @@ class AuthService {
       await _storage.delete(key: _kToken);
       await _storage.delete(key: _kUserId);
       await _storage.delete(key: _kRole);
+      await _storage.delete(key: _kFaydaId);
+      await _storage.delete(key: _kFaydaVerified);
     } catch (e) {
       debugPrint('discardSession: clearing local keys failed: $e');
     }

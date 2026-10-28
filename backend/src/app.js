@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const session = require('express-session');
 const errorHandler = require('./middleware/errorHandler');
 const rateLimiter = require('./middleware/rateLimiter');
 const userRoutes = require('./modules/users/users.routes');
@@ -17,6 +18,16 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+// The Fayda OIDC round trip stores the PKCE state and verifier on the
+// session before redirecting to the IdP and back, so it must exist.
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'smart-agri-dev-secret-change-me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { httpOnly: true, sameSite: 'lax' },
+  })
+);
 app.use(rateLimiter);
 
 // Health check
@@ -25,6 +36,10 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
+app.use('/fayda', express.static(require('path').join(__dirname, '../public/fayda')));
+// Fixed sandbox credentials use this callback. On USB-connected Android,
+// adb reverse tcp:3000 tcp:4000 forwards it to this backend.
+app.get('/callback', require('./modules/users/user.controller').faydaCallback);
 app.use('/api/auth', userRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/listings', listingRoutes);
