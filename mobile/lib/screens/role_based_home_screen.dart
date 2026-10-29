@@ -6,6 +6,7 @@ import '../features/listings/presentation/screens/listing_list_screen.dart';
 import '../features/listings/presentation/screens/listing_create_screen.dart';
 import '../features/digital_debo/presentation/screens/debo_batch_list_screen.dart';
 import 'advisory_screen.dart';
+import '../features/listings/presentation/widgets/marketplace_ui.dart';
 
 class RoleBasedHomeScreen extends StatefulWidget {
   const RoleBasedHomeScreen({super.key});
@@ -58,9 +59,9 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
         ? const [
             BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Browse'),
             BottomNavigationBarItem(
-                icon: Icon(Icons.list), label: 'My Listings'),
+                icon: Icon(Icons.inventory_2_outlined), label: 'My Listings'),
             BottomNavigationBarItem(
-                icon: Icon(Icons.add_circle), label: 'Sell'),
+                icon: Icon(Icons.add_circle_outline_rounded), label: 'Sell'),
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.light_mode), label: 'Advice'),
@@ -78,8 +79,13 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.green,
-        unselectedItemColor: Colors.grey,
+        backgroundColor: Colors.white,
+        elevation: 12,
+        selectedItemColor: marketGreen,
+        unselectedItemColor: marketMuted,
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
         items: tabs,
       ),
     );

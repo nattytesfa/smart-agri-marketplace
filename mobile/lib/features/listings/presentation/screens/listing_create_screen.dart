@@ -12,6 +12,7 @@ import '../../../../data/models/listing_model.dart';
 import '../../../../data/models/listing_validation.dart';
 import '../../../../services/sync_service.dart';
 import '../widgets/listing_card.dart';
+import '../widgets/marketplace_ui.dart';
 
 class ListingCreateScreen extends StatefulWidget {
   const ListingCreateScreen({super.key, this.listing});
@@ -262,160 +263,238 @@ class _ListingCreateScreenState extends State<ListingCreateScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => MarketplaceTheme(
+          child: Scaffold(
         appBar: AppBar(
-            title: Text(widget.listing == null
-                ? 'Create Produce Listing'
-                : 'Edit Listing')),
+            title:
+                Text(widget.listing == null ? 'Sell produce' : 'Edit Listing')),
         body: !_authorized
             ? const Center(
                 child: Text('An authorized farmer account is required.'))
-            : Form(
-                key: _form,
-                child: ListView(padding: const EdgeInsets.all(16), children: [
-                  const Text('Crop details',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  DropdownButtonFormField<String>(
-                      initialValue: _crop,
-                      decoration:
-                          const InputDecoration(labelText: 'Crop Type *'),
-                      items: cropTypes
-                          .map(
-                              (v) => DropdownMenuItem(value: v, child: Text(v)))
-                          .toList(),
-                      onChanged: (v) => setState(() => _crop = v),
-                      validator: requiredText),
-                  if (_crop == 'Other')
-                    TextFormField(
-                        controller: _customCrop,
-                        maxLength: 80,
-                        decoration: const InputDecoration(
-                            labelText: 'Custom crop name *'),
-                        validator: requiredText),
-                  TextFormField(
-                      controller: _variety,
-                      maxLength: 120,
-                      decoration:
-                          const InputDecoration(labelText: 'Crop Variety *'),
-                      validator: requiredText),
-                  TextFormField(
-                      controller: _quantity,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration:
-                          const InputDecoration(labelText: 'Quantity *'),
-                      validator: positiveNumber),
-                  DropdownButtonFormField<String>(
-                      initialValue: _unit,
-                      decoration:
-                          const InputDecoration(labelText: 'Quantity Unit *'),
-                      items: listingUnits
-                          .map(
-                              (v) => DropdownMenuItem(value: v, child: Text(v)))
-                          .toList(),
-                      onChanged: (v) => setState(() => _unit = v!)),
-                  TextFormField(
-                      controller: _price,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                          labelText: 'Asking Price — ETB per $_unit *'),
-                      validator: positiveNumber),
-                  const Text(
-                      'Changing units does not convert the entered quantity or price. Enter both in the selected unit.'),
-                  const SizedBox(height: 20),
-                  const Text('Location',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  Text(_lat == null
-                      ? 'No GPS captured. Enter a Kebele below.'
-                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}'),
-                  Wrap(children: [
-                    TextButton.icon(
-                        onPressed: _location,
-                        icon: const Icon(Icons.my_location),
-                        label: const Text('Capture GPS')),
-                    if (_lat != null)
-                      TextButton(
-                          onPressed: () => setState(() {
-                                _lat = null;
-                                _lng = null;
-                              }),
-                          child: const Text('Use Kebele only'))
-                  ]),
-                  TextFormField(
-                      controller: _kebele,
-                      maxLength: 160,
-                      decoration: const InputDecoration(
-                          labelText: 'Kebele (required without GPS)'),
-                      validator: (v) => locationValidation(_lat, _lng, v)),
-                  const SizedBox(height: 20),
-                  const Text('Additional details (optional)',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  ProduceImage(
-                      cropType: _crop ?? 'Produce',
-                      localPath: _imagePath,
-                      imageUrl: _imageUrl,
-                      height: 150),
-                  Wrap(children: [
-                    TextButton.icon(
-                        onPressed:
-                            _busy ? null : () => _pick(ImageSource.camera),
-                        icon: const Icon(Icons.camera_alt),
-                        label: const Text('Camera')),
-                    TextButton.icon(
-                        onPressed:
-                            _busy ? null : () => _pick(ImageSource.gallery),
-                        icon: const Icon(Icons.photo_library),
-                        label: const Text('Gallery')),
-                    TextButton(
-                        onPressed: () => setState(() {
-                              _imagePath = null;
-                              _imageUrl = null;
-                              _imageChanged = true;
-                            }),
-                        child: const Text('Remove image'))
-                  ]),
-                  const Text('Images are optional. You can add one later.'),
-                  ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title:
-                          Text('Harvest Date: ${_harvest ?? 'Not provided'}'),
-                      onTap: _date,
-                      trailing: _harvest == null
-                          ? const Icon(Icons.calendar_today)
-                          : IconButton(
-                              onPressed: () => setState(() => _harvest = null),
-                              icon: const Icon(Icons.clear))),
-                  DropdownButtonFormField<String>(
-                      initialValue: _grade,
-                      decoration: const InputDecoration(
-                          labelText: 'Farmer-reported Quality/Grade'),
-                      items: [
-                        const DropdownMenuItem<String>(
-                            value: null, child: Text('Not provided')),
-                        ...qualityGrades.entries.map((e) => DropdownMenuItem(
-                            value: e.key, child: Text(e.value)))
-                      ],
-                      onChanged: (v) => setState(() => _grade = v)),
-                  const Text(
-                      'Prototype categories; not independently verified or officially certified.'),
-                  TextFormField(
-                      controller: _description,
-                      minLines: 3,
-                      maxLines: 6,
-                      maxLength: 500,
-                      decoration:
-                          const InputDecoration(labelText: 'Description'),
-                      validator: descriptionValidation),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                      onPressed: _busy ? null : _save,
-                      child: _busy
-                          ? const CircularProgressIndicator()
-                          : const Text('Save listing (online or offline)')),
-                ])),
+            : Center(
+                child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Form(
+                        key: _form,
+                        child: ListView(
+                            padding: const EdgeInsets.all(20),
+                            children: [
+                              MarketIntro(
+                                  eyebrow: widget.listing == null
+                                      ? 'From your farm to their table'
+                                      : 'Keep buyers in the know',
+                                  title: widget.listing == null
+                                      ? 'Make your harvest visible.'
+                                      : 'Refresh your listing.',
+                                  subtitle:
+                                      'Add clear details to help buyers find the right produce. Fields marked * are required.'),
+                              const MarketNotice(
+                                  message:
+                                      'Save with or without a connection. Your listing syncs when the server is reachable.'),
+                              _section('01', 'Crop details',
+                                  'What are you bringing to market?'),
+                              DropdownButtonFormField<String>(
+                                  initialValue: _crop,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Crop Type *'),
+                                  items: cropTypes
+                                      .map((v) => DropdownMenuItem(
+                                          value: v, child: Text(v)))
+                                      .toList(),
+                                  onChanged: (v) => setState(() => _crop = v),
+                                  validator: requiredText),
+                              if (_crop == 'Other')
+                                TextFormField(
+                                    controller: _customCrop,
+                                    maxLength: 80,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Custom crop name *'),
+                                    validator: requiredText),
+                              TextFormField(
+                                  controller: _variety,
+                                  maxLength: 120,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Crop Variety *'),
+                                  validator: requiredText),
+                              TextFormField(
+                                  controller: _quantity,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  decoration: const InputDecoration(
+                                      labelText: 'Quantity *'),
+                                  validator: positiveNumber),
+                              DropdownButtonFormField<String>(
+                                  initialValue: _unit,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Quantity Unit *'),
+                                  items: listingUnits
+                                      .map((v) => DropdownMenuItem(
+                                          value: v, child: Text(v)))
+                                      .toList(),
+                                  onChanged: (v) => setState(() => _unit = v!)),
+                              TextFormField(
+                                  controller: _price,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  decoration: InputDecoration(
+                                      labelText:
+                                          'Asking Price — ETB per $_unit *'),
+                                  validator: positiveNumber),
+                              const MarketNotice(
+                                  message:
+                                      'Quantity and price use the selected unit. Changing units does not convert your values.'),
+                              _section('02', 'Pickup location',
+                                  'Help nearby buyers discover your produce.'),
+                              Text(_lat == null
+                                  ? 'No GPS captured. Enter a Kebele below.'
+                                  : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}'),
+                              Wrap(children: [
+                                TextButton.icon(
+                                    onPressed: _location,
+                                    icon: const Icon(Icons.my_location),
+                                    label: const Text('Capture GPS')),
+                                if (_lat != null)
+                                  TextButton(
+                                      onPressed: () => setState(() {
+                                            _lat = null;
+                                            _lng = null;
+                                          }),
+                                      child: const Text('Use Kebele only'))
+                              ]),
+                              TextFormField(
+                                  controller: _kebele,
+                                  maxLength: 160,
+                                  decoration: const InputDecoration(
+                                      labelText:
+                                          'Kebele (required without GPS)'),
+                                  validator: (v) =>
+                                      locationValidation(_lat, _lng, v)),
+                              _section('03', 'Make it stand out',
+                                  'A photo and a few details go a long way. Optional.'),
+                              ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: ProduceImage(
+                                      cropType: _crop ?? 'Produce',
+                                      localPath: _imagePath,
+                                      imageUrl: _imageUrl,
+                                      height: 180)),
+                              Wrap(children: [
+                                TextButton.icon(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _pick(ImageSource.camera),
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Camera')),
+                                TextButton.icon(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _pick(ImageSource.gallery),
+                                    icon: const Icon(Icons.photo_library),
+                                    label: const Text('Gallery')),
+                                TextButton(
+                                    onPressed: () => setState(() {
+                                          _imagePath = null;
+                                          _imageUrl = null;
+                                          _imageChanged = true;
+                                        }),
+                                    child: const Text('Remove image'))
+                              ]),
+                              const Text(
+                                  'A clear photo helps buyers see the quality of your harvest.',
+                                  style: TextStyle(
+                                      color: marketMuted, fontSize: 12)),
+                              ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                      'Harvest Date: ${_harvest ?? 'Not provided'}'),
+                                  onTap: _date,
+                                  trailing: _harvest == null
+                                      ? const Icon(Icons.calendar_today)
+                                      : IconButton(
+                                          onPressed: () =>
+                                              setState(() => _harvest = null),
+                                          icon: const Icon(Icons.clear))),
+                              DropdownButtonFormField<String>(
+                                  initialValue: _grade,
+                                  decoration: const InputDecoration(
+                                      labelText:
+                                          'Farmer-reported Quality/Grade'),
+                                  items: [
+                                    const DropdownMenuItem<String>(
+                                        value: null,
+                                        child: Text('Not provided')),
+                                    ...qualityGrades.entries.map((e) =>
+                                        DropdownMenuItem(
+                                            value: e.key, child: Text(e.value)))
+                                  ],
+                                  onChanged: (v) => setState(() => _grade = v)),
+                              const Text(
+                                  'Farmer-reported grade. Not independently verified or officially certified.',
+                                  style: TextStyle(
+                                      color: marketMuted, fontSize: 12)),
+                              TextFormField(
+                                  controller: _description,
+                                  minLines: 3,
+                                  maxLines: 6,
+                                  maxLength: 500,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Description'),
+                                  validator: descriptionValidation),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                  onPressed: _busy ? null : _save,
+                                  icon: const Icon(
+                                      Icons.check_circle_outline_rounded),
+                                  label: _busy
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2))
+                                      : const Text(
+                                          'Save listing (online or offline)')),
+                              const Text(
+                                  'You can review and update your listing in My Listings.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: marketMuted, fontSize: 12)),
+                            ]
+                                .expand((child) =>
+                                    [child, const SizedBox(height: 14)])
+                                .toList())))),
+      ));
+
+  Widget _section(String number, String title, String subtitle) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        child: Row(children: [
+          Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: const Color(0xFFE3EDDF),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Text(number,
+                  style: const TextStyle(
+                      color: marketGreen,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12))),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: marketInk,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 3),
+                Text(subtitle,
+                    style: const TextStyle(color: marketMuted, fontSize: 12))
+              ])),
+        ]),
       );
 }

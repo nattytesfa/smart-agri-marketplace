@@ -214,7 +214,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: ListingCard(listing: l, onTap: () {}, showSync: true))));
-    expect(find.textContaining('ETB 3000.0 per quintal'), findsOneWidget);
+    expect(find.text('ETB 3000 / quintal'), findsOneWidget);
     expect(find.textContaining('Pending Sync'), findsOneWidget);
     expect(find.textContaining('Farmer-reported:'), findsOneWidget);
   });
