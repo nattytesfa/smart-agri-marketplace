@@ -2,7 +2,7 @@ const pool = require('../../config/db');
 
 // Create a new transaction with escrow locked
 const createTransaction = async (data) => {
-  const {
+  let {
     listing_id,
     batch_id,
     buyer_id,
@@ -10,6 +10,29 @@ const createTransaction = async (data) => {
     amount,
     payment_method,
   } = data;
+
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    if (listing_id && batch_id) throw Object.assign(new Error('Choose a listing or a batch, not both'), { status: 400 });
+    if (listing_id) {
+      const l = (await db.query('SELECT * FROM produce_listings WHERE listing_id=$1 FOR UPDATE', [listing_id])).rows[0];
+      if (!l || l.deleted_at || l.status !== 'available' || l.farmer_id === buyer_id) throw Object.assign(new Error('Listing is no longer available'), { status: 409 });
+      farmer_id = l.farmer_id;
+      amount = Number(l.quantity) * Number(l.price_per_unit);
+      await db.query("UPDATE produce_listings SET status='reserved',version=version+1,updated_at=now() WHERE listing_id=$1", [listing_id]);
+    } else if (batch_id) {
+      const batch = (await db.query('SELECT * FROM digital_debo_batches WHERE batch_id=$1 FOR UPDATE', [batch_id])).rows[0];
+      const existing = await db.query('SELECT 1 FROM transactions WHERE batch_id=$1', [batch_id]);
+      const members = (await db.query(`SELECT l.* FROM produce_listings l JOIN debo_batch_listings d ON d.listing_id=l.listing_id
+        WHERE d.batch_id=$1 ORDER BY l.listing_id FOR UPDATE OF l`, [batch_id])).rows;
+      if (!batch || batch.target_buyer_id !== buyer_id || existing.rows.length || !members.length || members.some(l => l.deleted_at || l.status !== 'reserved')) {
+        throw Object.assign(new Error('Batch unavailable or already paid'), { status: 409 });
+      }
+      amount = members.reduce((sum,l) => sum + Number(l.quantity) * Number(l.price_per_unit), 0);
+      // Existing transaction contract has a single farmer FK for batch payments.
+      farmer_id = members[0].farmer_id;
+    }
 
   const query = `
     INSERT INTO transactions (
@@ -32,8 +55,10 @@ const createTransaction = async (data) => {
     transactionHash,
   ];
 
-  const result = await pool.query(query, values);
-  return result.rows[0];
+  const result = await db.query(query, values);
+  await db.query('COMMIT');
+  return { ...result.rows[0], amount };
+  } catch (e) { await db.query('ROLLBACK'); throw e; } finally { db.release(); }
 };
 
 // Update transaction after successful payment
@@ -42,7 +67,7 @@ const confirmPayment = async (transactionId, transactionHash) => {
     UPDATE transactions 
     SET escrow_status = 'locked', 
         transaction_hash = $2
-    WHERE transaction_id = $1
+    WHERE transaction_id = $1 AND escrow_status='locked'
     RETURNING transaction_id
   `;
   const result = await pool.query(query, [transactionId, transactionHash]);
@@ -51,12 +76,15 @@ const confirmPayment = async (transactionId, transactionHash) => {
 
 // Update escrow status
 const updateEscrowStatus = async (transactionId, status) => {
-  const query = `
-    UPDATE transactions 
-    SET escrow_status = $2
-    WHERE transaction_id = $1
-    RETURNING transaction_id
-  `;
+  const query = `WITH changed AS (
+    UPDATE transactions SET escrow_status=$2::escrow_status,released_at=CASE WHEN $2::text='released' THEN now() ELSE released_at END WHERE transaction_id=$1 AND escrow_status='locked'
+    RETURNING transaction_id,listing_id,batch_id
+  ), listings AS (
+    UPDATE produce_listings SET status=CASE WHEN $2::text='released' THEN 'sold'::listing_status ELSE 'available'::listing_status END,
+      version=version+1,updated_at=now()
+    WHERE listing_id IN (SELECT listing_id FROM changed UNION SELECT d.listing_id FROM debo_batch_listings d JOIN changed c ON c.batch_id=d.batch_id)
+    RETURNING listing_id
+  ) SELECT transaction_id FROM changed`;
   const result = await pool.query(query, [transactionId, status]);
   return result.rows[0];
 };
@@ -114,15 +142,7 @@ const generateQrToken = async (transactionId) => {
 
 // Release escrow funds (called after QR scan)
 const releaseEscrow = async (transactionId) => {
-  const query = `
-    UPDATE transactions 
-    SET escrow_status = 'released', 
-        released_at = NOW()
-    WHERE transaction_id = $1
-    RETURNING transaction_id
-  `;
-  const result = await pool.query(query, [transactionId]);
-  return result.rows[0];
+  return updateEscrowStatus(transactionId, 'released');
 };
 
 module.exports = {

@@ -17,7 +17,7 @@ class RoleBasedHomeScreen extends StatefulWidget {
 class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
   final _storage = const FlutterSecureStorage();
   int _currentIndex = 0;
-  String _userRole = 'farmer'; // Default
+  String? _userRole;
 
   // Farmer screens
   final List<Widget> _farmerScreens = const [
@@ -43,12 +43,15 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
   }
 
   Future<void> _loadUserRole() async {
-    final role = await _storage.read(key: 'user_role') ?? 'farmer';
-    setState(() => _userRole = role);
+    final role = await _storage.read(key: 'user_role');
+    if (mounted) setState(() => _userRole = role ?? 'buyer');
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_userRole == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final isFarmer = _userRole == 'farmer';
     final screens = isFarmer ? _farmerScreens : _buyerScreens;
     final tabs = isFarmer

@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'my_listings_screen.dart';
 
 import '../services/auth_service.dart';
 
@@ -48,14 +51,25 @@ class _StartupScreenState extends State<StartupScreen> {
   /// screen (a fast sign-out, say) leaves any attempt in flight unable to
   /// navigate.
   int _run = 0;
+  bool _offlineListings = false;
 
   @override
   void initState() {
     super.initState();
+    _checkOfflineAccess();
     // A post-frame callback is what lets the first frame paint the connecting
     // state before the first request goes out; the token is read inside it so
     // a sign-out during that frame is seen.
     WidgetsBinding.instance.addPostFrameCallback((_) => _waitForBackend());
+  }
+
+  Future<void> _checkOfflineAccess() async {
+    final id =
+        await const FlutterSecureStorage().read(key: 'confirmed_farmer_id');
+    final currentId = Supabase.instance.client.auth.currentUser?.id;
+    if (mounted) {
+      setState(() => _offlineListings = id != null && id == currentId);
+    }
   }
 
   @override
@@ -81,6 +95,7 @@ class _StartupScreenState extends State<StartupScreen> {
       auth: widget.authService,
       retryDelay: widget.retryDelay ?? const Duration(seconds: 3),
       wait: widget.wait,
+      cancelled: () => !mounted || run != _run,
     );
 
     if (!mounted || run != _run || gate == SessionGate.noAnswer) return;
@@ -121,6 +136,18 @@ class _StartupScreenState extends State<StartupScreen> {
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
+              if (_offlineListings)
+                TextButton.icon(
+                  icon: const Icon(Icons.offline_bolt),
+                  label: const Text('Open saved listings offline'),
+                  onPressed: () {
+                    _run++;
+                    Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const MyListingsScreen()));
+                  },
+                ),
             ],
           ),
         ),

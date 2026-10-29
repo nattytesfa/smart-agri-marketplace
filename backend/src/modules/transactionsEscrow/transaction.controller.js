@@ -34,7 +34,7 @@ const initiateTransaction = async (req, res, next) => {
       // In sandbox, we skip actual payment
       // In production, we would redirect to payment gateway
       paymentResponse = await telebirr.initiatePayment(
-        amount,
+        transaction.amount,
         req.user.phone_number,
         transaction.transaction_id
       );

@@ -32,25 +32,17 @@ const getUser = async (userId) => {
 
 // Get all listings for moderation
 const getAllListings = async () => {
-  const query = `
-    SELECT l.listing_id, l.crop_type, l.variety, l.quantity, 
-           l.price_per_unit, l.status, l.created_at,
-           u.phone_number as farmer_phone,
-           fp.social_trust_score
-    FROM produce_listings l
-    JOIN users u ON l.farmer_id = u.user_id
-    LEFT JOIN farmer_profiles fp ON l.farmer_id = fp.farmer_id
-    ORDER BY l.created_at DESC
-  `;
-  const result = await pool.query(query);
+  const result = await pool.query(`SELECT l.*,ST_Y(l.location_gps) AS lat,ST_X(l.location_gps) AS lng,
+    u.full_name AS farmer_name,u.phone_number AS farmer_phone,fp.social_trust_score
+    FROM produce_listings l JOIN users u ON u.user_id=l.farmer_id
+    LEFT JOIN farmer_profiles fp ON fp.farmer_id=l.farmer_id
+    WHERE l.deleted_at IS NULL ORDER BY l.created_at DESC`);
   return result.rows;
 };
 
 // Delete a listing (admin only)
 const deleteListing = async (listingId) => {
-  const query = `DELETE FROM produce_listings WHERE listing_id = $1 RETURNING listing_id`;
-  const result = await pool.query(query, [listingId]);
-  return result.rows[0];
+  return require('../listings/listing.service').deleteListing(listingId, null, null, true);
 };
 
 // Get all transactions for monitoring
@@ -74,14 +66,7 @@ const getAllTransactions = async () => {
 
 // Resolve a dispute (update escrow status)
 const resolveDispute = async (transactionId, status) => {
-  const query = `
-    UPDATE transactions 
-    SET escrow_status = $2
-    WHERE transaction_id = $1
-    RETURNING transaction_id
-  `;
-  const result = await pool.query(query, [transactionId, status]);
-  return result.rows[0];
+  return require('../transactionsEscrow/transaction.service').updateEscrowStatus(transactionId, status);
 };
 
 // Get heatmap data (PostGIS aggregation)
@@ -93,8 +78,9 @@ const getHeatmapData = async (region, cropType) => {
       SUM(l.quantity) as total_quantity,
       AVG(l.price_per_unit) as avg_price,
       l.crop_type
-    FROM produce_listings l
+    FROM produce_listings l JOIN users u ON u.user_id=l.farmer_id
     WHERE l.status = 'available'
+      AND l.deleted_at IS NULL
       AND l.location_gps IS NOT NULL
   `;
   const values = [];
@@ -107,10 +93,8 @@ const getHeatmapData = async (region, cropType) => {
   }
 
   if (region) {
-    // Region filter: assumes region is stored in farmer_profiles
-    // For simplicity, we'll use a bounding box or region name
-    // This is a simplified version - in production you'd have region data
-    query += ` AND ST_DWithin(l.location_gps, ST_SetSRID(ST_MakePoint(38.742, 9.032), 4326), 50000)`;
+    query += ` AND u.region = $${paramCount}`;
+    values.push(region);
   }
 
   query += ` 

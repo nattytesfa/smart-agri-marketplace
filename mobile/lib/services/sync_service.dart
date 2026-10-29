@@ -1,84 +1,149 @@
-import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:async';
+import 'dart:math';
 import 'package:dio/dio.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:hive/hive.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
+import 'package:uuid/uuid.dart';
 import '../data/models/listing_model.dart';
+import '../data/remote/listings_api.dart';
 
 class SyncService {
-  final _storage = const FlutterSecureStorage();
-  final Dio _dio = Dio();
+  SyncService({Dio? api, Box<ListingModel>? box, String? Function()? owner})
+      : _apiOverride = api,
+        _boxOverride = box,
+        _ownerOverride = owner;
+  final Dio? _apiOverride;
+  final Box<ListingModel>? _boxOverride;
+  final String? Function()? _ownerOverride;
+  static bool _running = false;
+  static Timer? _timer;
 
-  Future<void> syncListings() async {
-    // Check connectivity
-    final List<ConnectivityResult> connectivity =
-        await Connectivity().checkConnectivity();
-    if (connectivity.contains(ConnectivityResult.none)) {
-      debugPrint('No internet, skip sync');
-      return;
-    }
+  static void start() {
+    _timer ??= Timer.periodic(
+        const Duration(seconds: 30), (_) => SyncService().syncListings());
+    SyncService().syncListings();
+  }
 
-    // Get token
-    final token = await _storage.read(key: 'supabase_token');
-    if (token == null) {
-      if (kDebugMode) {
-        print('No token, skip sync');
-      }
-      return;
-    }
-
-    // Get listings with sync_status = 'local'
-    final box = Hive.box<ListingModel>('listings');
-    final localListings =
-        box.values.where((l) => l.syncStatus == 'local').toList();
-
-    if (localListings.isEmpty) {
-      if (kDebugMode) {
-        print('No local listings to sync');
-      }
-      return;
-    }
-
-    final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
+  Future<void> syncListings({bool retry = false}) async {
+    if (_running) return;
+    final owner = _ownerOverride != null
+        ? _ownerOverride!()
+        : Supabase.instance.client.auth.currentUser?.id;
+    if (owner == null) return;
+    final api = _apiOverride ?? listingApi();
+    final box = _boxOverride ?? Hive.box<ListingModel>('listings');
+    _running = true;
     try {
-      final response = await _dio.post(
-        '$baseUrl/api/listings/sync',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Content-Type': 'application/json',
-          },
-        ),
-        data: {
-          'listings': localListings.map((l) => l.toJson()).toList(),
-        },
-      );
-
-      if (response.statusCode == 201) {
-        // Update sync_status to 'cloud' for all synced listings
-        for (var listing in localListings) {
-          // find matching listing by some unique local identifier?
-          // Since we don't have a local ID yet, we'll match by timestamp or content.
-          // Better: we should store a temporary local ID. For simplicity, we'll mark all as synced.
-          // Actually we need to update each listing with the server ID. Let's assume we match by index.
-          // For production, you'd store a local UUID. For now, we'll just mark all.
-          listing.syncStatus = 'cloud';
-          // Optionally, we could store the server listing ID. But for now, we'll just save.
+      // Recover requests interrupted by process death, without changing their
+      // idempotency keys or leaving "Syncing" displayed indefinitely offline.
+      for (final listing in box.values.toList()) {
+        if (listing.farmerId == owner &&
+            listing.syncStatus == 'local' &&
+            listing.syncState == 'syncing') {
+          listing.syncState = 'pending';
           await listing.save();
         }
-        if (kDebugMode) {
-          print('✅ Synced ${localListings.length} listings');
+      }
+      // Interface connectivity is not enough: verify the actual API is reachable.
+      await api.get('/listings', queryParameters: {'limit': 1});
+      for (final listing in box.values.toList()) {
+        if (listing.farmerId != owner || listing.syncStatus == 'cloud') {
+          continue;
         }
-      } else {
-        if (kDebugMode) {
-          print('❌ Sync failed: ${response.data}');
+        if (listing.syncState == 'review') continue;
+        if (!retry &&
+            listing.nextAttempt != null &&
+            listing.nextAttempt!.isAfter(DateTime.now())) {
+          continue;
+        }
+        // A conflict needs explicit user resolution, not an automatic overwrite.
+        if (listing.syncState == 'failed' &&
+            listing.syncError?.startsWith('Conflict:') == true) {
+          continue;
+        }
+        listing.clientId ??= const Uuid().v4();
+        listing.operationId ??= const Uuid().v4();
+        listing.syncState = 'syncing';
+        if (listing.id == null) listing.uploadAttempted = true;
+        listing.attempts++;
+        await listing.save();
+        try {
+          // Deletion supersedes unsent edits/images for a known server record.
+          if (listing.deleted && listing.id != null) {
+            await api.delete('/listings/${listing.id}',
+                data: {'version': listing.version});
+            await listing.delete();
+            continue;
+          }
+          if (listing.corePending || listing.id == null) {
+            final response = listing.id == null
+                ? await api.post('/listings', data: listing.toJson())
+                : await api.put('/listings/${listing.id}',
+                    data: listing.toJson());
+            final remote = response.data['listing'];
+            listing.id = remote['listing_id'];
+            listing.version = remote['version'];
+            if (remote['last_operation_id'] != null &&
+                remote['last_operation_id'] != listing.operationId) {
+              await listing.save();
+              throw DioException(
+                  requestOptions: response.requestOptions,
+                  response: Response(
+                      requestOptions: response.requestOptions,
+                      statusCode: 409,
+                      data: {
+                        'error':
+                            'A previous upload exists with different changes. Review its server version.'
+                      }));
+            }
+            listing.corePending = false;
+            await listing.save();
+          }
+          if (listing.deleted) {
+            await api.delete('/listings/${listing.id}',
+                data: {'version': listing.version});
+            await listing.delete();
+            continue;
+          }
+          if (listing.imagePending && listing.imagePath != null) {
+            listing.imageId ??= const Uuid().v4();
+            await listing.save();
+            final upload = await api.post(
+                '/listings/${listing.id}/images/${listing.imageId}',
+                data: FormData.fromMap({
+                  'image': await MultipartFile.fromFile(listing.imagePath!)
+                }));
+            listing.imageUrl = upload.data['image_url'];
+            // A stable image operation UUID also makes a lost update response safe to replay.
+            final payload = listing.toJson()
+              ..['operation_id'] = listing.imageId;
+            final response =
+                await api.put('/listings/${listing.id}', data: payload);
+            listing.version = response.data['listing']['version'];
+            listing.imagePending = false;
+          }
+          listing.syncStatus = 'cloud';
+          listing.syncState = 'synced';
+          listing.syncError = null;
+          listing.nextAttempt = null;
+          listing.attempts = 0;
+          await listing.save();
+        } catch (e) {
+          listing.syncState = 'failed';
+          final code = e is DioException ? e.response?.statusCode : null;
+          final message = e is DioException ? e.response?.data : null;
+          listing.syncError = code == 409
+              ? 'Conflict: $message Refresh and review server changes.'
+              : 'Unable to sync${listing.imagePending ? ' image' : ''}. ${message ?? 'Check your connection and retry.'}';
+          listing.nextAttempt = DateTime.now().add(Duration(
+              seconds: min(900, 5 * pow(2, min(listing.attempts, 8)).toInt())));
+          await listing.save();
         }
       }
-    } catch (e) {
-      if (kDebugMode) {
-        print('❌ Sync error: $e');
-      }
+    } catch (_) {
+      // Leave durable pending operations intact when the backend is unreachable.
+    } finally {
+      _running = false;
     }
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../../data/remote/listings_api.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class DeboBatchListScreen extends StatefulWidget {
@@ -39,13 +40,29 @@ class _DeboBatchListScreenState extends State<DeboBatchListScreen> {
       return;
     }
 
-    final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
+    final baseUrl = listingApiBase;
     try {
-      final lat = 9.032;
-      final lng = 38.742;
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw Exception(
+            'Enable GPS for precise Digital Debo aggregation. You can still search the marketplace by Kebele.');
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        throw Exception(
+            'GPS permission is needed for nearby aggregation. No location will be guessed.');
+      }
+      final position = await Geolocator.getCurrentPosition(
+          locationSettings:
+              const LocationSettings(timeLimit: Duration(seconds: 20)));
+      final lat = position.latitude;
+      final lng = position.longitude;
 
       final response = await _dio.post(
-        '$baseUrl/api/debo/aggregate',
+        '$baseUrl/debo/aggregate',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
         data: {
           'crop_type': _cropController.text,
@@ -76,11 +93,11 @@ class _DeboBatchListScreenState extends State<DeboBatchListScreen> {
     setState(() => _isLoading = true);
 
     final token = await _storage.read(key: 'supabase_token');
-    final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
+    final baseUrl = listingApiBase;
 
     try {
       final response = await _dio.post(
-        '$baseUrl/api/debo/batches',
+        '$baseUrl/debo/batches',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
         data: {
           'cluster_listings': listings,
@@ -89,14 +106,17 @@ class _DeboBatchListScreenState extends State<DeboBatchListScreen> {
       );
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _clusters = [];
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('✅ ${response.data['message']}'),
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context);
+        if (Navigator.canPop(context)) Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {

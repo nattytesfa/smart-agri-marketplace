@@ -80,6 +80,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       final userId = response.data['user_id'];
       await _storage.write(key: 'user_id', value: userId);
       await _storage.write(key: 'user_role', value: _selectedRole);
+      if (_selectedRole == 'farmer' && userId is String && userId.isNotEmpty) {
+        await _storage.write(key: 'confirmed_farmer_id', value: userId);
+      } else {
+        await _storage.delete(key: 'confirmed_farmer_id');
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

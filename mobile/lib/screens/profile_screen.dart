@@ -128,6 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       await _storage.delete(key: 'user_id');
       await _storage.delete(key: 'fayda_id');
       await _storage.delete(key: 'fayda_verified');
+      await _storage.delete(key: 'confirmed_farmer_id');
 
       if (!context.mounted) return;
       Navigator.pushNamedAndRemoveUntil(
@@ -141,6 +142,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       await _storage.delete(key: 'user_id');
       await _storage.delete(key: 'fayda_id');
       await _storage.delete(key: 'fayda_verified');
+      await _storage.delete(key: 'confirmed_farmer_id');
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error logging out: $error')),

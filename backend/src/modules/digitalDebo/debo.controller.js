@@ -14,9 +14,10 @@ const aggregateListings = async (req, res, next) => {
       lat,
       lng,
       radius = 50000, // 50km default
+      unit = 'quintal',
     } = req.body;
 
-    if (!crop_type || !target_quantity || lat == null || lng == null) {
+    if (typeof crop_type !== 'string' || !crop_type.trim() || !Number.isFinite(Number(target_quantity)) || Number(target_quantity)<=0 || lat == null || lng == null) {
       return res.status(400).json({
         error: 'Missing required fields: crop_type, target_quantity, lat, lng'
       });
@@ -29,6 +30,7 @@ const aggregateListings = async (req, res, next) => {
       lat,
       lng,
       radius,
+      unit,
     });
 
     if (nearbyListings.length === 0) {
@@ -75,32 +77,16 @@ const createBatch = async (req, res, next) => {
       return res.status(400).json({ error: 'No listings selected' });
     }
 
-    // Calculate total quantity
-    const totalQuantity = cluster_listings.reduce((sum, l) => sum + l.quantity, 0);
-    const listingIds = cluster_listings.map(l => l.listing_id);
-
-    // Create batch
-    const batchId = await deboService.createBatch(
-      buyerId,
-      { total_quantity: totalQuantity },
-      crop_type
-    );
-
-    // Link listings to batch
-    await deboService.linkListingsToBatch(batchId, listingIds);
-
-    // Update listing statuses to 'reserved'
-    for (const id of listingIds) {
-      await pool.query(
-        'UPDATE produce_listings SET status = $1 WHERE listing_id = $2',
-        ['reserved', id]
-      );
+    if (!Array.isArray(cluster_listings) || cluster_listings.length > 100 || cluster_listings.some(l => !/^[0-9a-f-]{36}$/i.test(l.listing_id))) {
+      return res.status(400).json({ error: 'Invalid listing IDs' });
     }
+    const listingIds = cluster_listings.map(l => l.listing_id);
+    const batch = await deboService.createBatch(buyerId, listingIds, crop_type);
 
     res.status(201).json({
       message: 'Batch created successfully',
-      batch_id: batchId,
-      total_quantity: totalQuantity,
+      batch_id: batch.batch_id,
+      total_quantity: batch.total_quantity,
       farmer_count: cluster_listings.length,
     });
 

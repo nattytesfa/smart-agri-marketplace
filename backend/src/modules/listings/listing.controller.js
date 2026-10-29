@@ -1,83 +1,32 @@
-const listingService = require('./listing.service');
-const { validationResult } = require('express-validator');
-
-// POST /api/listings – create a single listing (online)
-const createListing = async (req, res, next) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const farmerId = req.user.id;
-    const listingData = req.body;
-
-    const created = await listingService.createListing(listingData, farmerId);
-
-    res.status(201).json({
-      message: 'Listing created successfully',
-      listing: created,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// GET /api/listings – get all available listings (with filters)
-const getListings = async (req, res, next) => {
-  try {
-    const filters = {
-      crop_type: req.query.crop_type,
-      min_price: req.query.min_price ? parseFloat(req.query.min_price) : null,
-      max_price: req.query.max_price ? parseFloat(req.query.max_price) : null,
-      radius: req.query.radius ? parseFloat(req.query.radius) : null,
-      lat: req.query.lat ? parseFloat(req.query.lat) : null,
-      lng: req.query.lng ? parseFloat(req.query.lng) : null,
-    };
-
-    const listings = await listingService.getAvailableListings(filters);
-    res.status(200).json(listings);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// GET /api/listings/me – get the current farmer's listings
-const getMyListings = async (req, res, next) => {
-  try {
-    const farmerId = req.user.id;
-    const listings = await listingService.getFarmerListings(farmerId);
-    res.status(200).json(listings);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// POST /api/sync/listings – bulk sync from mobile (offline to online)
-const syncListings = async (req, res, next) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const farmerId = req.user.id;
-    const { listings } = req.body;
-
-    const created = await listingService.createListingsBatch(listings, farmerId);
-
-    res.status(201).json({
-      message: `${created.length} listings synced successfully`,
-      synced: created,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = {
-  createListing,
-  getListings,
-  getMyListings,
-  syncListings,
-};
+const service = require('./listing.service');
+const supabase = require('../../config/supabaseClient');
+const handle = fn => async (req, res, next) => { try { await fn(req, res); } catch (e) { next(e); } };
+const createListing = handle(async (req, res) => res.status(201).json({ listing: await service.createListing(req.body, req.user.id) }));
+const getListings = handle(async (req, res) => res.json(await service.getAvailableListings(req.query)));
+const getMyListings = handle(async (req, res) => res.json(await service.getFarmerListings(req.user.id)));
+const syncListings = handle(async (req, res) => res.status(201).json(await service.createListingsBatch(req.body.listings, req.user.id)));
+const updateListing = handle(async (req, res) => res.json({ listing: await service.updateListing(req.params.id, req.body, req.user.id) }));
+const deleteListing = handle(async (req, res) => res.json(await service.deleteListing(req.params.id, req.user.id, req.body.version)));
+const getListing = handle(async (req, res) => {
+  const listing = await service.getListing(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'Listing not found' });
+  res.json({ listing });
+});
+const uploadImage = handle(async (req, res) => {
+  const listing = await service.getListing(req.params.id);
+  if (!listing) return res.status(409).json({ error: 'Listing was removed. Refresh its server version.' });
+  if (listing.farmer_id !== req.user.id) return res.status(403).json({ error: 'Listing is not owned by you' });
+  const file = req.file;
+  const b = file?.buffer;
+  const jpeg = b && b[0] === 255 && b[1] === 216 && b[2] === 255;
+  const png = b && b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
+  const webp = b && b.toString('ascii',0,4) === 'RIFF' && b.toString('ascii',8,12) === 'WEBP';
+  if (!jpeg && !png && !webp) return res.status(400).json({ error: 'Provide a JPEG, PNG or WebP image under 200 KB' });
+  const ext = jpeg ? 'jpg' : png ? 'png' : 'webp';
+  const path = `${req.user.id}/${req.params.id}/${req.params.imageId}.${ext}`;
+  const bucket = supabase.storage.from('produce-images');
+  const { error } = await bucket.upload(path,b,{ contentType: jpeg ? 'image/jpeg' : png ? 'image/png' : 'image/webp', upsert: true });
+  if (error) return res.status(503).json({ error: 'Image storage unavailable. Listing is preserved; retry image upload.' });
+  res.json({ image_url: bucket.getPublicUrl(path).data.publicUrl });
+});
+module.exports = { createListing,getListings,getMyListings,syncListings,updateListing,deleteListing,getListing,uploadImage };

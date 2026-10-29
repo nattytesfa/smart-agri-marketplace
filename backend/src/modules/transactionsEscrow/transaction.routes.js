@@ -1,6 +1,8 @@
 const express = require('express');
 const authMiddleware = require('../../middleware/auth');
 const validateRequest = require('../../middleware/validateRequest');
+const { rbac } = require('../../middleware/rbac');
+const { body } = require('express-validator');
 const {
   initiateTransaction,
   handleWebhook,
@@ -20,7 +22,8 @@ router.post('/webhooks/cbe', handleWebhook);
 router.use(authMiddleware);
 
 // POST /api/transactions/initiate
-router.post('/initiate', initiateTransaction);
+router.post('/initiate', rbac(['buyer']), body('listing_id').optional().isUUID(), body('batch_id').optional().isUUID(),
+  body('payment_method').isIn(['telebirr','cbe_birr']), validateRequest, initiateTransaction);
 
 // GET /api/transactions
 router.get('/', getMyTransactions);

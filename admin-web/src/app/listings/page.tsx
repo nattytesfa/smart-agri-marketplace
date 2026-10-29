@@ -29,11 +29,20 @@ interface Listing {
   created_at: string;
   farmer_phone: string;
   social_trust_score: number | null;
+  unit: string;
+  farmer_name: string | null;
+  kebele: string | null;
+  lat: number | null;
+  lng: number | null;
+  image_url: string | null;
+  harvest_date: string | null;
+  quality_grade: string | null;
+  description: string | null;
 }
 
 const PAGE_SIZE = 10;
 
-const STATUS_OPTIONS = ['all', 'available', 'sold', 'reserved', 'expired', 'withdrawn'];
+const STATUS_OPTIONS = ['all', 'available', 'sold', 'reserved'];
 
 const loadListings = () => adminRequest<Listing[]>('/api/admin/listings');
 
@@ -46,9 +55,11 @@ export default function ListingsPage() {
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
+  const [grade, setGrade] = useState('all');
   const [page, setPage] = useState(1);
   const [pendingDelete, setPendingDelete] = useState<Listing | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [selected, setSelected] = useState<Listing | null>(null);
 
   const listings = useMemo(() => data ?? [], [data]);
 
@@ -58,15 +69,18 @@ export default function ListingsPage() {
     return listings.filter((listing) => {
       const matchesStatus = status === 'all' || listing.status === status;
       if (!matchesStatus) return false;
+      if (grade !== 'all' && listing.quality_grade !== grade) return false;
       if (!query) return true;
 
       return (
         (listing.crop_type ?? '').toLowerCase().includes(query) ||
         (listing.variety ?? '').toLowerCase().includes(query) ||
+        (listing.kebele ?? '').toLowerCase().includes(query) ||
+        (listing.farmer_name ?? '').toLowerCase().includes(query) ||
         (listing.farmer_phone ?? '').toLowerCase().includes(query)
       );
     });
-  }, [listings, search, status]);
+  }, [listings, search, status, grade]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -129,13 +143,13 @@ export default function ListingsPage() {
       key: 'quantity',
       header: 'Quantity',
       align: 'right',
-      render: (listing) => <span className="table__cell--strong">{formatNumber(listing.quantity)}</span>,
+      render: (listing) => <span className="table__cell--strong">{formatNumber(listing.quantity)} {listing.unit}</span>,
     },
     {
       key: 'price_per_unit',
       header: 'Unit price',
       align: 'right',
-      render: (listing) => formatCurrency(listing.price_per_unit),
+      render: (listing) => `${formatCurrency(listing.price_per_unit)} / ${listing.unit}`,
     },
     {
       key: 'farmer_phone',
@@ -175,6 +189,7 @@ export default function ListingsPage() {
       className: 'table__cell--actions',
       render: (listing) => (
         <span className="table__actions">
+          <button type="button" className="btn btn--ghost btn--sm" onClick={() => setSelected(listing)}>Details</button>
           <button
             type="button"
             className="btn btn--danger-soft btn--icon btn--sm"
@@ -209,7 +224,7 @@ export default function ListingsPage() {
         eyebrow="Operations"
         eyebrowIcon="package"
         title="Listings moderation"
-        description="Review every produce listing submitted by farmers. Removing a listing deletes it permanently, so confirm carefully."
+        description="Review farmer listings. Moderation hides removed listings while retaining transaction history."
       />
 
       {error ? (
@@ -304,6 +319,12 @@ export default function ListingsPage() {
                     </option>
                   ))}
                 </select>
+                <select className="select" aria-label="Filter farmer-reported grade" value={grade}
+                  onChange={(event) => { setGrade(event.target.value); setPage(1); }}>
+                  <option value="all">All grades</option>
+                  <option value="A">Grade A</option><option value="B">Grade B</option>
+                  <option value="C">Grade C</option><option value="not_graded">Not Graded</option>
+                </select>
               </div>
 
               <span className="toolbar__count">
@@ -342,6 +363,28 @@ export default function ListingsPage() {
         </>
       )}
 
+      {selected && (
+        <div className="dialog" role="presentation">
+        <div className="dialog__overlay" onClick={() => setSelected(null)} aria-hidden="true" />
+        <div role="dialog" aria-modal="true" aria-label="Listing details" className="dialog__panel"
+          style={{ maxHeight: '85vh', overflowY: 'auto' }} onKeyDown={(event) => { if (event.key === 'Escape') setSelected(null); }}>
+          <h2>{selected.crop_type} — {selected.variety || '—'}</h2>
+          {selected.image_url ? (
+            // Produce photographs are served by configured Supabase Storage.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={selected.image_url} alt={selected.crop_type} style={{ maxWidth: '100%', maxHeight: 240 }} />
+          ) : <p>🌾 {selected.crop_type} — No photo provided</p>}
+          <p>{formatNumber(selected.quantity)} {selected.unit} · {formatCurrency(selected.price_per_unit)} per {selected.unit}</p>
+          <p>Farmer: {selected.farmer_name || '—'} · {selected.farmer_phone || '—'}</p>
+          <p>Location: {selected.kebele || 'GPS'} {selected.lat != null && selected.lng != null ? `(${selected.lat}, ${selected.lng})` : '(no precise coordinates)'}</p>
+          <p>Status: {selected.status} · Created: {formatDate(selected.created_at)}</p>
+          <p>Harvest date: {selected.harvest_date ? formatDate(selected.harvest_date) : 'Not provided'}</p>
+          <p>Farmer-reported grade: {selected.quality_grade || 'Not provided'} (not independently verified)</p>
+          <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{selected.description || 'No description provided'}</p>
+          <button autoFocus type="button" className="btn btn--ghost" onClick={() => setSelected(null)}>Close details</button>
+        </div>
+        </div>
+      )}
       <ConfirmDialog
         open={pendingDelete !== null}
         variant="danger"
@@ -349,7 +392,7 @@ export default function ListingsPage() {
         title="Remove this listing?"
         message={
           pendingDelete
-            ? `The ${titleCase(pendingDelete.crop_type)} listing from ${pendingDelete.farmer_phone || 'this farmer'} will be permanently deleted. This cannot be undone.`
+            ? `Hide the ${titleCase(pendingDelete.crop_type)} listing from ${pendingDelete.farmer_phone || 'this farmer'}? Transaction history will be retained.`
             : ''
         }
         confirmLabel={submitting ? 'Removing…' : 'Remove listing'}

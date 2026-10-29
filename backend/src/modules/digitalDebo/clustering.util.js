@@ -12,7 +12,12 @@ const findNearbyClusters = async (filters) => {
     lng,
     radius = 50000, // default 50km in meters
     min_quantity_per_farmer = 1, // minimum quantity per listing
+    unit = 'quintal',
   } = filters;
+
+  if (![lat,lng,radius,min_quantity_per_farmer].every(v => Number.isFinite(Number(v))) || Math.abs(lat)>90 || Math.abs(lng)>180 || radius<=0 || radius>1000000 || !['quintal','kg','ton'].includes(unit)) {
+    throw Object.assign(new Error('Invalid location, radius or quantity unit'), { status: 400 });
+  }
 
   let query = `
     SELECT 
@@ -23,27 +28,28 @@ const findNearbyClusters = async (filters) => {
       l.quantity,
       l.price_per_unit,
       l.unit,
-      ST_X(l.location_gps) as lat,
-      ST_Y(l.location_gps) as lng,
+      ST_Y(l.location_gps) as lat,
+      ST_X(l.location_gps) as lng,
       fp.social_trust_score,
       ST_Distance(
-        l.location_gps,
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)
+        l.location_gps::geography,
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
       ) as distance_meters
     FROM produce_listings l
     JOIN farmer_profiles fp ON l.farmer_id = fp.farmer_id
     WHERE l.status = 'available'
+      AND l.deleted_at IS NULL AND l.unit = $6
       AND l.quantity >= $3
-      AND l.crop_type = $4
+      AND lower(l.crop_type) = lower($4)
       AND ST_DWithin(
-        l.location_gps,
-        ST_SetSRID(ST_MakePoint($1, $2), 4326),
+        l.location_gps::geography,
+        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
         $5
       )
     ORDER BY distance_meters ASC
   `;
 
-  const values = [lng, lat, min_quantity_per_farmer, crop_type, radius];
+  const values = [lng, lat, min_quantity_per_farmer, crop_type, radius, unit];
 
   const result = await pool.query(query, values);
   return result.rows;
@@ -115,9 +121,9 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
  * Create a cluster summary for the buyer
  */
 const summarizeCluster = (cluster, targetQuantity) => {
-  const totalQuantity = cluster.reduce((sum, l) => sum + l.quantity, 0);
-  const avgPrice = cluster.reduce((sum, l) => sum + l.price_per_unit, 0) / cluster.length;
-  const avgTrustScore = cluster.reduce((sum, l) => sum + l.social_trust_score, 0) / cluster.length;
+  const totalQuantity = cluster.reduce((sum, l) => sum + Number(l.quantity), 0);
+  const avgPrice = cluster.reduce((sum, l) => sum + Number(l.price_per_unit), 0) / cluster.length;
+  const avgTrustScore = cluster.reduce((sum, l) => sum + Number(l.social_trust_score), 0) / cluster.length;
 
   return {
     total_quantity: totalQuantity,

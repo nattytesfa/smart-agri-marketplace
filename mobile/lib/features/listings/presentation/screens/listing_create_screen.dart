@@ -1,223 +1,421 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'dart:io';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../../../../data/models/listing_model.dart';
+import '../../../../data/models/listing_validation.dart';
+import '../../../../services/sync_service.dart';
+import '../widgets/listing_card.dart';
 
 class ListingCreateScreen extends StatefulWidget {
-  const ListingCreateScreen({super.key});
-
+  const ListingCreateScreen({super.key, this.listing});
+  final ListingModel? listing;
   @override
   State<ListingCreateScreen> createState() => _ListingCreateScreenState();
 }
 
 class _ListingCreateScreenState extends State<ListingCreateScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _cropTypeController = TextEditingController();
-  final _varietyController = TextEditingController();
-  final _quantityController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _unitController = TextEditingController(text: 'quintal');
-
-  String? _imagePath;
-  Position? _currentPosition;
-  bool _isLoading = false;
+  final _form = GlobalKey<FormState>();
+  final _customCrop = TextEditingController();
+  final _variety = TextEditingController();
+  final _quantity = TextEditingController();
+  final _price = TextEditingController();
+  final _kebele = TextEditingController();
+  final _description = TextEditingController();
+  String? _crop, _grade, _harvest, _imagePath, _imageUrl;
+  String _unit = 'quintal';
+  double? _lat, _lng;
+  bool _busy = false, _imageChanged = false, _authorized = false;
 
   @override
   void initState() {
     super.initState();
-    _getLocation();
+    final l = widget.listing;
+    if (l != null) {
+      _crop = cropTypes.contains(l.cropType) ? l.cropType : 'Other';
+      if (_crop == 'Other') _customCrop.text = l.cropType;
+      _variety.text = l.variety ?? '';
+      _quantity.text = '${l.quantity}';
+      _price.text = '${l.pricePerUnit}';
+      _unit = listingUnits.contains(l.unit) ? l.unit : 'quintal';
+      _kebele.text = l.kebele ?? '';
+      _description.text = l.description ?? '';
+      _grade = l.qualityGrade;
+      _harvest = l.harvestDate;
+      _lat = l.latitude;
+      _lng = l.longitude;
+      _imagePath = l.imagePath;
+      _imageUrl = l.imageUrl;
+    }
+    _checkRole();
   }
 
-  Future<void> _getLocation() async {
+  Future<void> _checkRole() async {
+    final role = await const FlutterSecureStorage().read(key: 'user_role');
+    final user = Supabase.instance.client.auth.currentUser;
+    if (mounted) {
+      setState(() => _authorized = role == 'farmer' &&
+          user != null &&
+          (widget.listing == null || widget.listing!.farmerId == user.id));
+    }
+  }
+
+  void _message(String text) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    }
+  }
+
+  Future<void> _location() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-      LocationPermission permission = await Geolocator.checkPermission();
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _message('GPS is off. Enter your Kebele instead.');
+        return;
+      }
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
       }
-      if (permission == LocationPermission.deniedForever) return;
-      Position position = await Geolocator.getCurrentPosition();
-      setState(() => _currentPosition = position);
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _message('Location permission unavailable. Enter your Kebele instead.');
+        return;
+      }
+      final p = await Geolocator.getCurrentPosition(
+          locationSettings:
+              const LocationSettings(timeLimit: Duration(seconds: 20)));
+      if (mounted) {
+        setState(() {
+          _lat = p.latitude;
+          _lng = p.longitude;
+        });
+      }
+    } catch (_) {
+      _message('GPS unavailable. You can save using your Kebele.');
+    }
+  }
+
+  Future<void> _pick(ImageSource source) async {
+    setState(() => _busy = true);
+    try {
+      final image = await ImagePicker().pickImage(source: source);
+      if (image == null) return;
+      final extension = image.path.split('.').last.toLowerCase();
+      if (!['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].contains(extension)) {
+        throw Exception('Unsupported image format');
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final path = '${dir.path}/produce_${const Uuid().v4()}.jpg';
+      String? compressed;
+      for (final quality in [80, 60, 40, 25]) {
+        final result = await FlutterImageCompress.compressAndGetFile(
+            image.path, path,
+            quality: quality,
+            minWidth: quality <= 40 ? 800 : 1280,
+            minHeight: quality <= 40 ? 600 : 960,
+            format: CompressFormat.jpeg);
+        if (result != null && await File(result.path).length() <= 204800) {
+          compressed = result.path;
+          break;
+        }
+      }
+      if (compressed == null) {
+        throw Exception(
+            'Cannot compress this photo under 200 KB. Try a smaller image or continue without it.');
+      }
+      if (mounted) {
+        setState(() {
+          _imagePath = compressed;
+          _imageChanged = true;
+        });
+      }
     } catch (e) {
-      debugPrint('Location error: $e');
+      _message('Photo could not be added: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.camera);
-    if (image != null) {
-      // Compress image to under 200KB
-      final tempDir = await getTemporaryDirectory();
-      final compressedPath =
-          '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final result = await FlutterImageCompress.compressAndGetFile(
-        image.path,
-        compressedPath,
-        quality: 70,
-      );
-      if (result != null) {
-        setState(() => _imagePath = result.path);
+  Future<void> _date() async {
+    final now = DateTime.now();
+    final d = await showDatePicker(
+        context: context,
+        initialDate: DateTime.tryParse(_harvest ?? '') ?? now,
+        firstDate: DateTime(1900),
+        lastDate: now);
+    if (d != null && mounted) {
+      setState(() => _harvest =
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}');
+    }
+  }
+
+  Future<void> _save() async {
+    if (!_authorized || _busy || !_form.currentState!.validate()) return;
+    // ListView can dispose off-screen FormFields. Validate all controller values
+    // too, so an invalid draft can never enter the persistent offline queue.
+    final crop = _crop == 'Other' ? _customCrop.text : _crop;
+    final inputError = requiredText(crop) != null
+        ? 'Select a crop or enter its name.'
+        : requiredText(_variety.text) != null
+            ? 'Crop variety is required.'
+            : positiveNumber(_quantity.text) != null
+                ? 'Quantity: enter a number greater than zero.'
+                : positiveNumber(_price.text) != null
+                    ? 'Price: enter a number greater than zero.'
+                    : descriptionValidation(_description.text);
+    if (inputError != null) {
+      _message(inputError);
+      return;
+    }
+    final locationError = locationValidation(_lat, _lng, _kebele.text);
+    if (locationError != null) {
+      _message(locationError);
+      return;
+    }
+    if (widget.listing?.syncState == 'syncing') {
+      _message('Please wait for synchronization to finish.');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final l = widget.listing ??
+          ListingModel(
+              cropType: '',
+              quantity: 1,
+              pricePerUnit: 1,
+              clientId: const Uuid().v4(),
+              farmerId: Supabase.instance.client.auth.currentUser!.id);
+      l.cropType = (_crop == 'Other' ? _customCrop.text : _crop!).trim();
+      l.variety = _variety.text.trim();
+      l.quantity = double.parse(_quantity.text);
+      l.pricePerUnit = double.parse(_price.text);
+      l.unit = _unit;
+      l.latitude = _lat;
+      l.longitude = _lng;
+      l.kebele = _kebele.text.trim().isEmpty ? null : _kebele.text.trim();
+      l.harvestDate = _harvest;
+      l.qualityGrade = _grade;
+      l.description = _description.text.isEmpty ? null : _description.text;
+      if (_imageChanged) {
+        l.imagePath = _imagePath;
+        l.imageUrl = _imagePath == null ? null : _imageUrl;
+        l.imagePending = _imagePath != null;
+        l.imageId = const Uuid().v4();
       }
-    }
-  }
-
-  Future<void> _saveListing() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    final newListing = ListingModel(
-      cropType: _cropTypeController.text,
-      variety:
-          _varietyController.text.isNotEmpty ? _varietyController.text : null,
-      quantity: double.parse(_quantityController.text),
-      unit: _unitController.text,
-      pricePerUnit: double.parse(_priceController.text),
-      latitude: _currentPosition?.latitude,
-      longitude: _currentPosition?.longitude,
-      harvestDate: null,
-      imagePath: _imagePath,
-      syncStatus: 'local',
-    );
-
-    // Save to Hive
-    final box = Hive.box<ListingModel>('listings');
-    await box.add(newListing);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Listing saved offline! Will sync when online.')),
-      );
-      Navigator.pop(context);
+      if (l.imagePath != null && l.imageUrl == null) {
+        l.imagePending = true;
+      }
+      l.queueChange();
+      if (widget.listing == null) {
+        await Hive.box<ListingModel>('listings').add(l);
+      } else {
+        await l.save();
+      }
+      _message('Saved locally. Will synchronize when the server is reachable.');
+      SyncService().syncListings();
+      if (mounted) {
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context, true);
+        } else {
+          _form.currentState!.reset();
+          _variety.clear();
+          _quantity.clear();
+          _price.clear();
+          _description.clear();
+          _customCrop.clear();
+          setState(() {
+            _crop = null;
+            _harvest = null;
+            _grade = null;
+            _imagePath = null;
+            _imageUrl = null;
+            _imageChanged = false;
+          });
+        }
+      }
+    } catch (e) {
+      _message('Could not save listing: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Listing'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            children: [
-              // Crop Type
-              TextFormField(
-                controller: _cropTypeController,
-                decoration: const InputDecoration(
-                  labelText: 'Crop Type *',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) => v!.isEmpty ? 'Required' : null,
-              ),
-              const SizedBox(height: 16),
-
-              // Variety
-              TextFormField(
-                controller: _varietyController,
-                decoration: const InputDecoration(
-                  labelText: 'Variety (optional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Quantity
-              TextFormField(
-                controller: _quantityController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantity *',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) {
-                  if (v!.isEmpty) return 'Required';
-                  if (double.tryParse(v) == null) return 'Enter a number';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Unit
-              TextFormField(
-                controller: _unitController,
-                decoration: const InputDecoration(
-                  labelText: 'Unit',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Price
-              TextFormField(
-                controller: _priceController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Price per unit *',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) {
-                  if (v!.isEmpty) return 'Required';
-                  if (double.tryParse(v) == null) return 'Enter a number';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Image
-              Row(
-                children: [
-                  Expanded(
-                    child: _imagePath != null
-                        ? Image.file(File(_imagePath!),
-                            height: 100, fit: BoxFit.cover)
-                        : const Text('No image selected'),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.camera_alt),
-                    onPressed: _pickImage,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Location
-              Text(
-                _currentPosition != null
-                    ? '📍 Lat: ${_currentPosition!.latitude.toStringAsFixed(4)}, Lng: ${_currentPosition!.longitude.toStringAsFixed(4)}'
-                    : '📍 Getting location...',
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-
-              // Save Button
-              ElevatedButton(
-                onPressed: _isLoading ? null : _saveListing,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Save Offline',
-                        style: TextStyle(fontSize: 18, color: Colors.white)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void dispose() {
+    for (final c in [
+      _customCrop,
+      _variety,
+      _quantity,
+      _price,
+      _kebele,
+      _description
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+            title: Text(widget.listing == null
+                ? 'Create Produce Listing'
+                : 'Edit Listing')),
+        body: !_authorized
+            ? const Center(
+                child: Text('An authorized farmer account is required.'))
+            : Form(
+                key: _form,
+                child: ListView(padding: const EdgeInsets.all(16), children: [
+                  const Text('Crop details',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  DropdownButtonFormField<String>(
+                      initialValue: _crop,
+                      decoration:
+                          const InputDecoration(labelText: 'Crop Type *'),
+                      items: cropTypes
+                          .map(
+                              (v) => DropdownMenuItem(value: v, child: Text(v)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _crop = v),
+                      validator: requiredText),
+                  if (_crop == 'Other')
+                    TextFormField(
+                        controller: _customCrop,
+                        maxLength: 80,
+                        decoration: const InputDecoration(
+                            labelText: 'Custom crop name *'),
+                        validator: requiredText),
+                  TextFormField(
+                      controller: _variety,
+                      maxLength: 120,
+                      decoration:
+                          const InputDecoration(labelText: 'Crop Variety *'),
+                      validator: requiredText),
+                  TextFormField(
+                      controller: _quantity,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'Quantity *'),
+                      validator: positiveNumber),
+                  DropdownButtonFormField<String>(
+                      initialValue: _unit,
+                      decoration:
+                          const InputDecoration(labelText: 'Quantity Unit *'),
+                      items: listingUnits
+                          .map(
+                              (v) => DropdownMenuItem(value: v, child: Text(v)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _unit = v!)),
+                  TextFormField(
+                      controller: _price,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                          labelText: 'Asking Price — ETB per $_unit *'),
+                      validator: positiveNumber),
+                  const Text(
+                      'Changing units does not convert the entered quantity or price. Enter both in the selected unit.'),
+                  const SizedBox(height: 20),
+                  const Text('Location',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text(_lat == null
+                      ? 'No GPS captured. Enter a Kebele below.'
+                      : 'GPS: ${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}'),
+                  Wrap(children: [
+                    TextButton.icon(
+                        onPressed: _location,
+                        icon: const Icon(Icons.my_location),
+                        label: const Text('Capture GPS')),
+                    if (_lat != null)
+                      TextButton(
+                          onPressed: () => setState(() {
+                                _lat = null;
+                                _lng = null;
+                              }),
+                          child: const Text('Use Kebele only'))
+                  ]),
+                  TextFormField(
+                      controller: _kebele,
+                      maxLength: 160,
+                      decoration: const InputDecoration(
+                          labelText: 'Kebele (required without GPS)'),
+                      validator: (v) => locationValidation(_lat, _lng, v)),
+                  const SizedBox(height: 20),
+                  const Text('Additional details (optional)',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  ProduceImage(
+                      cropType: _crop ?? 'Produce',
+                      localPath: _imagePath,
+                      imageUrl: _imageUrl,
+                      height: 150),
+                  Wrap(children: [
+                    TextButton.icon(
+                        onPressed:
+                            _busy ? null : () => _pick(ImageSource.camera),
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Camera')),
+                    TextButton.icon(
+                        onPressed:
+                            _busy ? null : () => _pick(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Gallery')),
+                    TextButton(
+                        onPressed: () => setState(() {
+                              _imagePath = null;
+                              _imageUrl = null;
+                              _imageChanged = true;
+                            }),
+                        child: const Text('Remove image'))
+                  ]),
+                  const Text('Images are optional. You can add one later.'),
+                  ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title:
+                          Text('Harvest Date: ${_harvest ?? 'Not provided'}'),
+                      onTap: _date,
+                      trailing: _harvest == null
+                          ? const Icon(Icons.calendar_today)
+                          : IconButton(
+                              onPressed: () => setState(() => _harvest = null),
+                              icon: const Icon(Icons.clear))),
+                  DropdownButtonFormField<String>(
+                      initialValue: _grade,
+                      decoration: const InputDecoration(
+                          labelText: 'Farmer-reported Quality/Grade'),
+                      items: [
+                        const DropdownMenuItem<String>(
+                            value: null, child: Text('Not provided')),
+                        ...qualityGrades.entries.map((e) => DropdownMenuItem(
+                            value: e.key, child: Text(e.value)))
+                      ],
+                      onChanged: (v) => setState(() => _grade = v)),
+                  const Text(
+                      'Prototype categories; not independently verified or officially certified.'),
+                  TextFormField(
+                      controller: _description,
+                      minLines: 3,
+                      maxLines: 6,
+                      maxLength: 500,
+                      decoration:
+                          const InputDecoration(labelText: 'Description'),
+                      validator: descriptionValidation),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                      onPressed: _busy ? null : _save,
+                      child: _busy
+                          ? const CircularProgressIndicator()
+                          : const Text('Save listing (online or offline)')),
+                ])),
+      );
 }

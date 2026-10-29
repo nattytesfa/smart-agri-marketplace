@@ -30,13 +30,31 @@ class ListingModelAdapter extends TypeAdapter<ListingModel> {
       syncStatus: fields[10] as String,
       imagePath: fields[11] as String?,
       createdAt: fields[12] as DateTime?,
+      clientId: fields[13] as String?,
+      farmerId: fields[14] as String?,
+      kebele: fields[15] as String?,
+      qualityGrade: fields[16] as String?,
+      description: fields[17] as String?,
+      imageUrl: fields[18] as String?,
+      version: fields[19] as int?,
+      operationId: fields[20] as String?,
+      syncState: fields[21] as String?,
+      syncError: fields[22] as String?,
+      attempts: fields[23] == null ? 0 : fields[23] as int,
+      nextAttempt: fields[24] as DateTime?,
+      deleted: fields[25] == null ? false : fields[25] as bool,
+      corePending: fields[26] == null ? true : fields[26] as bool,
+      imagePending: fields[27] == null ? false : fields[27] as bool,
+      imageId: fields[28] as String?,
+      farmerName: fields[29] as String?,
+      uploadAttempted: fields[30] == null ? false : fields[30] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, ListingModel obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(31)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +80,43 @@ class ListingModelAdapter extends TypeAdapter<ListingModel> {
       ..writeByte(11)
       ..write(obj.imagePath)
       ..writeByte(12)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(13)
+      ..write(obj.clientId)
+      ..writeByte(14)
+      ..write(obj.farmerId)
+      ..writeByte(15)
+      ..write(obj.kebele)
+      ..writeByte(16)
+      ..write(obj.qualityGrade)
+      ..writeByte(17)
+      ..write(obj.description)
+      ..writeByte(18)
+      ..write(obj.imageUrl)
+      ..writeByte(19)
+      ..write(obj.version)
+      ..writeByte(20)
+      ..write(obj.operationId)
+      ..writeByte(21)
+      ..write(obj.syncState)
+      ..writeByte(22)
+      ..write(obj.syncError)
+      ..writeByte(23)
+      ..write(obj.attempts)
+      ..writeByte(24)
+      ..write(obj.nextAttempt)
+      ..writeByte(25)
+      ..write(obj.deleted)
+      ..writeByte(26)
+      ..write(obj.corePending)
+      ..writeByte(27)
+      ..write(obj.imagePending)
+      ..writeByte(28)
+      ..write(obj.imageId)
+      ..writeByte(29)
+      ..write(obj.farmerName)
+      ..writeByte(30)
+      ..write(obj.uploadAttempted);
   }
 
   @override

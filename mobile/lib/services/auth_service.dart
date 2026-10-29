@@ -54,7 +54,8 @@ class AuthService {
     );
     final ticket = response.data['ticket'];
     if (ticket is! String || ticket.isEmpty) {
-      throw const AuthFailure('Could not start verification. Please try again.');
+      throw const AuthFailure(
+          'Could not start verification. Please try again.');
     }
     return ticket;
   }
@@ -124,6 +125,14 @@ class AuthService {
           }
           if (role != null) {
             await _storage.write(key: _kRole, value: role.toString());
+          }
+          // Only an API-confirmed farmer profile may reopen local listing tools
+          // offline. This marker is bound to the Supabase user, not just a role.
+          if (role == 'farmer' && userId != null) {
+            await _storage.write(
+                key: 'confirmed_farmer_id', value: userId.toString());
+          } else {
+            await _storage.delete(key: 'confirmed_farmer_id');
           }
 
           // The verification state is what the profile page displays, so it is
@@ -204,6 +213,7 @@ class AuthService {
       await _storage.delete(key: _kRole);
       await _storage.delete(key: _kFaydaId);
       await _storage.delete(key: _kFaydaVerified);
+      await _storage.delete(key: 'confirmed_farmer_id');
     } catch (e) {
       debugPrint('discardSession: clearing local keys failed: $e');
     }
@@ -254,12 +264,14 @@ Future<SessionGate> sessionGateFor(
   int? attempts,
   Duration retryDelay = const Duration(seconds: 3),
   Future<void> Function(Duration)? wait,
+  bool Function()? cancelled,
 }) async {
   final service = auth ?? AuthService();
   final sleep = wait ?? (d) => Future<void>.delayed(d);
 
   var made = 0;
   while (attempts == null || made < attempts) {
+    if (cancelled?.call() == true) return SessionGate.noAnswer;
     made++;
 
     bool? registered;

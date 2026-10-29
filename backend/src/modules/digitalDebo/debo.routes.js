@@ -1,5 +1,6 @@
 const express = require('express');
 const authMiddleware = require('../../middleware/auth');
+const { rbac } = require('../../middleware/rbac');
 const {
   aggregateListings,
   createBatch,
@@ -15,7 +16,7 @@ router.use(authMiddleware);
 router.post('/aggregate', aggregateListings);
 
 // POST /api/debo/batches – create a batch
-router.post('/batches', createBatch);
+router.post('/batches', rbac(['buyer']), createBatch);
 
 // GET /api/debo/batches/:id – get batch details
 router.get('/batches/:id', getBatch);

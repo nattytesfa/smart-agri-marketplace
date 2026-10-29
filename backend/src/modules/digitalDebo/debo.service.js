@@ -5,35 +5,28 @@ const {
   summarizeCluster,
 } = require('./clustering.util');
 
-const createBatch = async (buyerId, clusterSummary, cropType) => {
-  const query = `
-    INSERT INTO digital_debo_batches (
-      target_buyer_id,
-      status,
-      total_quantity,
-      crop_type
-    ) VALUES ($1, $2, $3, $4)
-    RETURNING batch_id
-  `;
-
-  const result = await pool.query(query, [
-    buyerId,
-    'pending',
-    clusterSummary.total_quantity,
-    cropType,
-  ]);
-
-  return result.rows[0].batch_id;
+const createBatch = async (buyerId, listingIds, cropType) => {
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    const ids = [...new Set(listingIds)].sort();
+    const { rows } = await db.query('SELECT * FROM produce_listings WHERE listing_id=ANY($1::uuid[]) ORDER BY listing_id FOR UPDATE', [ids]);
+    if (rows.length !== ids.length || !rows.length || rows.some(l => l.deleted_at || l.status !== 'available' || l.crop_type.toLowerCase() !== String(cropType).toLowerCase() || l.unit !== rows[0].unit)) {
+      throw Object.assign(new Error('Selected listings changed or have incompatible crops/units. Search again.'), { status: 409 });
+    }
+    const total = rows.reduce((sum,l) => sum + Number(l.quantity), 0);
+    const result = await db.query(`INSERT INTO digital_debo_batches(target_buyer_id,status,total_quantity,crop_type)
+      VALUES($1,'pending',$2,$3) RETURNING batch_id`, [buyerId,total,cropType]);
+    const id = result.rows[0].batch_id;
+    await db.query('INSERT INTO debo_batch_listings(batch_id,listing_id) SELECT $1,unnest($2::uuid[])', [id,ids]);
+    await db.query("UPDATE produce_listings SET status='reserved',version=version+1,updated_at=now() WHERE listing_id=ANY($1::uuid[])", [ids]);
+    await db.query('COMMIT');
+    return { batch_id: id, total_quantity: total };
+  } catch(e) { await db.query('ROLLBACK'); throw e; } finally { db.release(); }
 };
 
 const linkListingsToBatch = async (batchId, listingIds) => {
-  const values = listingIds.map(id => `('${batchId}', '${id}')`).join(',');
-  const query = `
-    INSERT INTO debo_batch_listings (batch_id, listing_id)
-    VALUES ${values}
-  `;
-
-  await pool.query(query);
+  await pool.query('INSERT INTO debo_batch_listings(batch_id,listing_id) SELECT $1,unnest($2::uuid[]) ON CONFLICT DO NOTHING', [batchId,listingIds]);
 };
 
 const getBatchDetails = async (batchId) => {

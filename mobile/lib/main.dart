@@ -99,6 +99,7 @@ void main() async {
 
     if (event.event == AuthChangeEvent.signedOut) {
       await storage.delete(key: 'supabase_token');
+      await storage.delete(key: 'confirmed_farmer_id');
       _navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/login',
         (route) => false,
@@ -112,6 +113,7 @@ void main() async {
   });
 
   runApp(MyApp(initialRoute: initialRoute));
+  SyncService.start();
 
   Connectivity()
       .onConnectivityChanged
