@@ -95,6 +95,9 @@ const getHeatmap = async (req, res, next) => {
 };
 
 module.exports = {
+  getTransactionSummary: async (req,res,next) => {
+    try {res.json(await adminService.getTransactionSummary());} catch(e){next(e);}
+  },
   getUser,
   getPendingUsers,
   getListings,

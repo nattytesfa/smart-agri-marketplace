@@ -47,9 +47,10 @@ const deleteListing = async (listingId) => {
 
 // Get all transactions for monitoring
 const getAllTransactions = async () => {
+  await require('../transactionsEscrow/transaction.service').recoverCheckouts();
   const query = `
     SELECT t.transaction_id, t.amount, t.escrow_status, 
-           t.payment_method, t.created_at, t.released_at,
+            t.payment_method, t.created_at, t.released_at,t.payment_status,t.payment_mode,t.checkout_status,t.checkout_expires_at,t.reconciliation_reason,
            t.transaction_hash,
            u1.phone_number as buyer_phone,
            u2.phone_number as farmer_phone,
@@ -67,6 +68,13 @@ const getAllTransactions = async () => {
 // Resolve a dispute (update escrow status)
 const resolveDispute = async (transactionId, status) => {
   return require('../transactionsEscrow/transaction.service').updateEscrowStatus(transactionId, status);
+};
+
+const getTransactionSummary = async () => {
+  await require('../transactionsEscrow/transaction.service').recoverCheckouts();
+  return (await pool.query(`SELECT round(coalesce(sum(amount),0),2)::text AS all,
+    round(coalesce(sum(amount) FILTER (WHERE escrow_status='locked' AND payment_status='confirmed'),0),2)::text AS locked,
+    count(*) FILTER (WHERE escrow_status::text='disputed')::int AS disputed FROM transactions`)).rows[0];
 };
 
 // Get heatmap data (PostGIS aggregation)
@@ -113,5 +121,6 @@ module.exports = {
   deleteListing,
   getAllTransactions,
   resolveDispute,
+  getTransactionSummary,
   getHeatmapData,
 };

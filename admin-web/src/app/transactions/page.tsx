@@ -31,6 +31,11 @@ interface EscrowTransaction {
   buyer_phone: string;
   farmer_phone: string;
   crop_type: string | null;
+  payment_status: string;
+  payment_mode: string;
+  checkout_status: string;
+  checkout_expires_at: string | null;
+  reconciliation_reason: string | null;
 }
 
 const PAGE_SIZE = 10;
@@ -42,14 +47,26 @@ const STATUS_OPTIONS = [
   'disputed',
   'released',
   'refunded',
+  'reconciliation_required',
+  'expired',
+  'cancelled',
 ];
 
-const loadTransactions = () =>
-  adminRequest<EscrowTransaction[]>('/api/admin/transactions');
+interface TransactionData {
+  transactions: EscrowTransaction[];
+  summary: {all: string; locked: string; disputed: number};
+}
+const loadTransactions = async (): Promise<TransactionData> => {
+  const [transactions, summary] = await Promise.all([
+    adminRequest<EscrowTransaction[]>('/api/admin/transactions'),
+    adminRequest<TransactionData['summary']>('/api/admin/transactions/summary'),
+  ]);
+  return {transactions, summary};
+};
 
 export default function TransactionsPage() {
   const { notify } = useToast();
-  const { data, error, loading, initialLoading, reload } = useAsyncData<EscrowTransaction[]>(
+  const { data, error, loading, initialLoading, reload } = useAsyncData<TransactionData>(
     loadTransactions,
     []
   );
@@ -63,13 +80,13 @@ export default function TransactionsPage() {
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const transactions = useMemo(() => data ?? [], [data]);
+  const transactions = useMemo(() => data?.transactions ?? [], [data]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return transactions.filter((transaction) => {
-      const matchesStatus = status === 'all' || transaction.escrow_status === status;
+      const matchesStatus = status === 'all' || transaction.escrow_status === status || transaction.checkout_status === status;
       if (!matchesStatus) return false;
       if (!query) return true;
 
@@ -90,19 +107,7 @@ export default function TransactionsPage() {
     [filtered, safePage]
   );
 
-  const totals = useMemo(() => {
-    const sumFor = (predicate: (transaction: EscrowTransaction) => boolean) =>
-      transactions
-        .filter(predicate)
-        .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
-
-    return {
-      all: sumFor(() => true),
-      locked: sumFor((transaction) => transaction.escrow_status === 'locked'),
-      disputed: transactions.filter((transaction) => transaction.escrow_status === 'disputed')
-        .length,
-    };
-  }, [transactions]);
+  const totals = data?.summary ?? {all: '0.00', locked: '0.00', disputed: 0};
 
   const confirmResolution = useCallback(async () => {
     if (!resolution) return;
@@ -116,11 +121,8 @@ export default function TransactionsPage() {
 
       notify({
         tone: 'success',
-        title: resolution.outcome === 'released' ? 'Funds released' : 'Payment refunded',
-        message:
-          resolution.outcome === 'released'
-            ? 'The farmer has been paid and escrow is now closed.'
-            : 'The buyer has been refunded and escrow is now closed.',
+        title: 'Prototype ledger updated',
+        message: 'No real payout or provider refund was performed.',
       });
 
       setResolution(null);
@@ -198,6 +200,15 @@ export default function TransactionsPage() {
       ),
     },
     {
+      key: 'checkout_status',
+      header: 'Checkout / payment',
+      render: (transaction) => <span title={transaction.reconciliation_reason || undefined}>
+        {transaction.checkout_status} / {transaction.payment_status}<br />
+        {transaction.payment_mode} · {transaction.checkout_expires_at ? formatDateTime(transaction.checkout_expires_at) : 'Manual review'}
+        {transaction.reconciliation_reason && <><br />{transaction.reconciliation_reason}</>}
+      </span>,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       className: 'table__cell--actions',
@@ -212,11 +223,13 @@ export default function TransactionsPage() {
             </span>
           );
         }
+        if (transaction.checkout_status === 'reconciliation_required') return <span>Verification required — stock retained</span>;
         return (
           <span className="table__actions">
             <button
               type="button"
               className="btn btn--success-soft btn--sm"
+              disabled={transaction.payment_status !== 'confirmed'}
               onClick={() => setResolution({ transaction, outcome: 'released' })}
             >
               <Icon name="check" size={15} />
@@ -256,7 +269,7 @@ export default function TransactionsPage() {
         eyebrow="Operations"
         eyebrowIcon="wallet"
         title="Escrow transactions"
-        description="Funds stay locked until delivery is confirmed. Releasing pays the farmer; refunding returns the money to the buyer. Both actions are final."
+        description="Prototype checkout and inventory-ledger monitoring. Pending checkouts are not funded escrow. No real payout or provider refund is performed by these actions."
       />
 
       {error ? (
@@ -279,13 +292,13 @@ export default function TransactionsPage() {
                 )}
               </p>
               <p className="stat__meta">
-                <strong>{formatCurrency(totals.all, 0)}</strong> gross value
+                <strong>{formatCurrency(totals.all, 0)}</strong> recorded checkout value
               </p>
             </div>
 
             <div className="stat">
               <div className="stat__top">
-                <span className="stat__label">Held in escrow</span>
+                <span className="stat__label">Verified open ledger</span>
                 <span className="stat__icon stat__icon--amber">
                   <Icon name="lock" size={18} />
                 </span>
@@ -297,7 +310,7 @@ export default function TransactionsPage() {
                   formatCurrency(totals.locked, 0)
                 )}
               </p>
-              <p className="stat__meta">Awaiting release or refund</p>
+              <p className="stat__meta">Excludes unverified pending checkouts; not proof of real funds</p>
             </div>
 
             <div className="stat">

@@ -16,6 +16,10 @@ const pool = require('../src/config/db');
     await db.query("SET LOCAL lock_timeout='5s'");
     const installed = (await db.query("SELECT 1 FROM pg_constraint WHERE conrelid='produce_listings'::regclass AND conname='listings_required_details'")).rowCount > 0;
     if (!installed) await db.query(fs.readFileSync(require.resolve('../db/migrations/005_produce_listing.sql'),'utf8'));
+    const deboInstalled=(await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='debo_batch_listings' AND column_name='proposed_quantity'")).rowCount>0;
+    if(!deboInstalled) await db.query(fs.readFileSync(require.resolve('../db/migrations/006_digital_debo.sql'),'utf8'));
+    if(!(await db.query("SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='transactions' AND policyname='transactions_read_secure'")).rowCount) await db.query(fs.readFileSync(require.resolve('../db/migrations/007_debo_transaction_security.sql'),'utf8'));
+    if(!(await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name='checkout_status'")).rowCount) await db.query(fs.readFileSync(require.resolve('../db/migrations/008_debo_stabilization.sql'),'utf8'));
     check(true, installed ? 'applied migration detected; testing installed schema' : 'additive migration executes against actual schema');
     const fixtures = [];
     for (const role of ['farmer','farmer','buyer','admin']) {
@@ -60,15 +64,20 @@ const pool = require('../src/config/db');
     check(deleted.listing_id===a.listing_id && !await s.getListing(a.listing_id),'soft deletion hides listing');
     await assert.rejects(s.createListing(payload,farmer),{status:409}); checks++; console.log('PASS deleted client ID cannot resurrect listing');
     const debo = require('../src/modules/digitalDebo/debo.service');
-    const reservation = await debo.createBatch(fixtures[2],[b.listing_id],optional.crop_type);
-    check(reservation.total_quantity===5 && (await s.getListing(b.listing_id)).status==='reserved','Digital Debo reserves with actual server quantities');
-    await assert.rejects(debo.createBatch(fixtures[2],[b.listing_id],optional.crop_type),{status:409}); checks++; console.log('PASS duplicate reservation prevented');
+    const aggregationRequest={crop_type:optional.crop_type,target_quantity:5,lat:9.032,lng:38.742,radius:1000,request_id:randomUUID()};
+    const reservation = await debo.createBatch(fixtures[2],aggregationRequest);
+    await debo.respond(reservation.batch_id,b.listing_id,farmer,{action:'accepted',quantity:5});
+    check(reservation.target_quantity===5 && Number((await s.getListing(b.listing_id)).available_quantity)===0,'Digital Debo reserves confirmed server quantities');
+    check((await debo.createBatch(fixtures[2],aggregationRequest)).batch_id===reservation.batch_id,'duplicate batch submission is idempotent');
     await assert.rejects(s.updateListing(b.listing_id,{...optional,version:2,operation_id:randomUUID()},farmer),{status:409}); checks++; console.log('PASS reserved listing cannot be edited');
     const t = require('../src/modules/transactionsEscrow/transaction.service');
     const sellable = await s.createListing({...payload,client_id:randomUUID()},farmer);
     const transaction = await t.createTransaction({listing_id:sellable.listing_id,buyer_id:fixtures[2],farmer_id:fixtures[1],amount:1,payment_method:'telebirr'});
-    check(transaction.amount===10000 && (await s.getListing(sellable.listing_id)).status==='reserved','purchase derives amount/owner and reserves listing');
+    check(transaction.amount==='10000.00' && (await s.getListing(sellable.listing_id)).status==='reserved','purchase derives amount/owner and reserves listing');
     await assert.rejects(t.createTransaction({listing_id:sellable.listing_id,buyer_id:fixtures[2],payment_method:'telebirr'}),{status:409}); checks++; console.log('PASS overselling blocked');
+    await assert.rejects(t.releaseEscrow(transaction.transaction_id),{status:409});
+    // Trusted test evidence only: no public callback can set this state.
+    await db.query("UPDATE transactions SET payment_status='confirmed' WHERE transaction_id=$1",[transaction.transaction_id]);
     await t.releaseEscrow(transaction.transaction_id);
     check((await s.getListing(sellable.listing_id)).status==='sold','escrow fulfillment marks produce sold');
 

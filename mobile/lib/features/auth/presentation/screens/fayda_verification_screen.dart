@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../../../core/config/env_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../../services/auth_service.dart';
 
@@ -35,21 +35,21 @@ class _FaydaVerificationScreenState extends State<FaydaVerificationScreen> {
       _isLoading = true;
       _error = null;
     });
-    final baseUrl =
-        dotenv.env['FAYDA_BROWSER_BASE_URL'] ??
-        dotenv.env['BACKEND_API_BASE_URL'] ?? 'http://localhost:4000';
+    final baseUrl = EnvConfig.browserBaseUrl;
     final authUrl = '$baseUrl/api/auth/fayda/login';
     try {
       var uri = Uri.parse(authUrl);
       if (widget.linkToProfile) {
         final token = AuthService.currentSessionToken;
         if (token == null) {
-          throw const AuthFailure('Please sign in again to verify your profile.');
+          throw const AuthFailure(
+              'Please sign in again to verify your profile.');
         }
         final ticket = await AuthService().startFaydaVerification(token);
         uri = uri.replace(queryParameters: {'ticket': ticket});
       }
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!mounted) return;
       if (launched) {
         setState(() {
@@ -64,7 +64,9 @@ class _FaydaVerificationScreenState extends State<FaydaVerificationScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is AuthFailure ? e.message : 'Could not start Fayda verification. Check your connection and try again.';
+        _error = e is AuthFailure
+            ? e.message
+            : 'Could not start Fayda verification. Check your connection and try again.';
         _isLoading = false;
       });
     }

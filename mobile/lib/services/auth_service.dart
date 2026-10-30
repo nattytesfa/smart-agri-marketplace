@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../core/config/env_config.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,10 +27,7 @@ class AuthService {
   static const _kFaydaId = 'fayda_id';
   static const _kFaydaVerified = 'fayda_verified';
 
-  String get _baseUrl {
-    final raw = dotenv.env['BACKEND_API_BASE_URL'] ?? '';
-    return raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
-  }
+  String get _baseUrl => EnvConfig.backendBaseUrl;
 
   /// The Supabase access token of the session in memory, if there is one.
   ///

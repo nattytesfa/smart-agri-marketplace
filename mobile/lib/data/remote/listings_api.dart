@@ -1,12 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../core/config/env_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-String get listingApiBase {
-  final base = (dotenv.env['BACKEND_API_BASE_URL'] ?? '')
-      .replaceFirst(RegExp(r'/+$'), '');
-  return base.endsWith('/api') ? base : '$base/api';
-}
+String get listingApiBase => EnvConfig.apiBaseUrl;
 
 Dio listingApi() {
   final dio = Dio(BaseOptions(

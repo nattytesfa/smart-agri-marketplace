@@ -1,342 +1,103 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
-import 'package:geolocator/geolocator.dart';
-import '../../../../data/remote/listings_api.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../../../data/remote/debo_api.dart';
+import 'debo_batch_detail_screen.dart';
+import 'debo_request_screen.dart';
 
 class DeboBatchListScreen extends StatefulWidget {
-  const DeboBatchListScreen({super.key});
-
+  final bool isFarmer;
+  final DeboApi? api;
+  const DeboBatchListScreen({super.key, this.isFarmer = false, this.api});
   @override
   State<DeboBatchListScreen> createState() => _DeboBatchListScreenState();
 }
 
 class _DeboBatchListScreenState extends State<DeboBatchListScreen> {
-  final _storage = const FlutterSecureStorage();
-  final Dio _dio = Dio();
-
-  final TextEditingController _cropController = TextEditingController();
-  final TextEditingController _quantityController = TextEditingController();
-  final TextEditingController _radiusController =
-      TextEditingController(text: '50');
-
-  bool _isLoading = false;
-  String? _errorMessage;
-  List<dynamic> _clusters = [];
-
-  Future<void> _searchClusters() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _clusters = [];
-    });
-
-    final token = await _storage.read(key: 'supabase_token');
-    if (token == null) {
-      setState(() {
-        _errorMessage = 'Please login first';
-        _isLoading = false;
-      });
-      return;
-    }
-
-    final baseUrl = listingApiBase;
-    try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        throw Exception(
-            'Enable GPS for precise Digital Debo aggregation. You can still search the marketplace by Kebele.');
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        throw Exception(
-            'GPS permission is needed for nearby aggregation. No location will be guessed.');
-      }
-      final position = await Geolocator.getCurrentPosition(
-          locationSettings:
-              const LocationSettings(timeLimit: Duration(seconds: 20)));
-      final lat = position.latitude;
-      final lng = position.longitude;
-
-      final response = await _dio.post(
-        '$baseUrl/debo/aggregate',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-        data: {
-          'crop_type': _cropController.text,
-          'target_quantity': double.parse(_quantityController.text),
-          'lat': lat,
-          'lng': lng,
-          'radius': double.parse(_radiusController.text) * 1000,
-        },
-      );
-
-      if (mounted) {
-        setState(() {
-          _clusters = response.data['viable_clusters'] ?? [];
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
+  late final DeboApi _api = widget.api ?? DeboApi();
+  List<Map<String, dynamic>> _batches = [];
+  bool _loading = true;
+  String? _error;
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  Future<void> _createBatch(List<dynamic> listings) async {
-    setState(() => _isLoading = true);
-
-    final token = await _storage.read(key: 'supabase_token');
-    final baseUrl = listingApiBase;
-
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final response = await _dio.post(
-        '$baseUrl/debo/batches',
-        options: Options(headers: {'Authorization': 'Bearer $token'}),
-        data: {
-          'cluster_listings': listings,
-          'crop_type': _cropController.text,
-        },
-      );
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _clusters = [];
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✅ ${response.data['message']}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        if (Navigator.canPop(context)) Navigator.pop(context);
-      }
+      final data = await _api.batches();
+      if (mounted) setState(() => _batches = data);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = e.toString();
-        });
-      }
+      if (mounted) setState(() => _error = deboError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Digital Debo'),
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Search form
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _cropController,
-                      decoration: const InputDecoration(
-                        labelText: 'Crop Type *',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.agriculture),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _quantityController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Target Quantity (quintals) *',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.numbers),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _radiusController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Search Radius (km)',
-                        border: OutlineInputBorder(),
-                        suffixText: 'km',
-                        prefixIcon: Icon(Icons.gps_fixed), // ✅ Fixed
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _searchClusters,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              '🔍 Find Clusters',
-                              style:
-                                  TextStyle(fontSize: 18, color: Colors.white),
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Results
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _errorMessage != null
-                      ? Center(child: Text('Error: $_errorMessage'))
-                      : _clusters.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: const [
-                                  // ✅ Removed 'const' from children list
-                                  Icon(Icons.search_off,
-                                      size: 64, color: Colors.grey),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'No clusters found',
-                                    style: TextStyle(
-                                        fontSize: 18, color: Colors.grey),
-                                  ),
-                                  Text(
-                                    'Try adjusting your search criteria',
-                                    style: TextStyle(
-                                        fontSize: 14, color: Colors.grey),
-                                  ),
-                                ],
-                              ),
-                            )
-                          : ListView.builder(
-                              itemCount: _clusters.length,
-                              itemBuilder: (context, index) {
-                                final cluster = _clusters[index];
-                                return Card(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  elevation: 2,
-                                  child: ExpansionTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.orange,
-                                      child: Text(
-                                        '${cluster['farmer_count']}',
-                                        style: const TextStyle(
-                                            color: Colors.white),
-                                      ),
-                                    ),
-                                    title: Text(
-                                      '${cluster['total_quantity']} ${_cropController.text}',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold),
-                                    ),
-                                    subtitle: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                            'Avg Price: ETB ${cluster['average_price_per_unit']?.toStringAsFixed(2) ?? 'N/A'}'),
-                                        Text(
-                                            '${cluster['farmer_count']} farmers'),
-                                        if (cluster['meets_target'] == true)
-                                          const Text(
-                                            '✅ Meets your quantity target',
-                                            style:
-                                                TextStyle(color: Colors.green),
-                                          ),
-                                      ],
-                                    ),
-                                    children: [
-                                      const Divider(),
-                                      Padding(
-                                        padding: const EdgeInsets.all(12.0),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            const Text(
-                                              'Farmer Listings:',
-                                              style: TextStyle(
-                                                  fontWeight: FontWeight.bold),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            ...cluster['listings']
-                                                    ?.map<Widget>((l) =>
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .symmetric(
-                                                                  vertical: 4),
-                                                          child: Row(
-                                                            mainAxisAlignment:
-                                                                MainAxisAlignment
-                                                                    .spaceBetween,
-                                                            children: [
-                                                              Text(
-                                                                  '${l['quantity']} quintals'),
-                                                              Text(
-                                                                  'ETB ${l['price_per_unit']}'),
-                                                              if (l['trust_score'] !=
-                                                                  null)
-                                                                Text(
-                                                                  '⭐ ${(l['trust_score'] * 100).toStringAsFixed(0)}%',
-                                                                  style: const TextStyle(
-                                                                      fontSize:
-                                                                          12),
-                                                                ),
-                                                            ],
-                                                          ),
-                                                        ))
-                                                    ?.toList() ??
-                                                [],
-                                            const SizedBox(height: 16),
-                                            ElevatedButton.icon(
-                                              onPressed: () => _createBatch(
-                                                  cluster['listings'] ?? []),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.green,
-                                                minimumSize: const Size(
-                                                    double.infinity, 48),
-                                              ),
-                                              icon: const Icon(
-                                                  Icons.shopping_cart,
-                                                  color: Colors.white),
-                                              label: const Text(
-                                                'Purchase Bulk Lot',
-                                                style: TextStyle(
-                                                    color: Colors.white),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+            title: Text(widget.isFarmer
+                ? 'Debo invitations & history'
+                : 'Digital Debo batches'),
+            actions: [
+              IconButton(
+                  onPressed: _loading ? null : _load,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh')
+            ]),
+        floatingActionButton: widget.isFarmer
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: () async {
+                  await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => DeboRequestScreen(api: _api)));
+                  if (mounted) _load();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Request produce')),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(_error!),
+                    TextButton(onPressed: _load, child: const Text('Retry'))
+                  ]))
+                : _batches.isEmpty
+                    ? Center(
+                        child: Text(widget.isFarmer
+                            ? 'No participation invitations yet.'
+                            : 'No aggregation requests yet.'))
+                    : RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 100),
+                            itemCount: _batches.length,
+                            itemBuilder: (context, i) {
+                              final b = _batches[i];
+                              return Card(
+                                  child: ListTile(
+                                title:
+                                    Text('${b['crop_type']} • ${b['status']}'),
+                                subtitle: Text(
+                                    '${deboQuantity(b['reserved_quantity'])} / ${deboQuantity(b['target_quantity'])} ${b['unit']} reserved\n${b['created_at']}'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () async {
+                                  await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => DeboBatchDetailScreen(
+                                              batchId: b['batch_id'],
+                                              api: _api)));
+                                  if (mounted) _load();
+                                },
+                              ));
+                            })),
+      );
 }

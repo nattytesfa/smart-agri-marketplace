@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../core/config/env_config.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/models/registration_draft.dart';
@@ -54,7 +54,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       _errorMessage = null;
     });
 
-    final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
+    final baseUrl = EnvConfig.backendBaseUrl;
     try {
       final response = await _dio.post(
         '$baseUrl/api/auth/register',

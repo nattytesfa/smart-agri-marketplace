@@ -10,6 +10,11 @@ const deleteListing = handle(async (req, res) => res.json(await service.deleteLi
 const getListing = handle(async (req, res) => {
   const listing = await service.getListing(req.params.id);
   if (!listing) return res.status(404).json({ error: 'Listing not found' });
+  if (listing.farmer_id !== req.user.id) {
+    if (listing.status !== 'available' || Number(listing.available_quantity)<=0) return res.status(404).json({error:'Listing unavailable'});
+    listing.total_quantity=listing.quantity;
+    listing.quantity=listing.available_quantity;
+  }
   res.json({ listing });
 });
 const uploadImage = handle(async (req, res) => {

@@ -30,6 +30,7 @@ router.get('/', getMyTransactions);
 
 // GET /api/transactions/:id
 router.get('/:id', getTransaction);
+router.post('/:id/cancel', rbac(['buyer']), require('./transaction.controller').cancelCheckout);
 
 // POST /api/transactions/:id/generate-qr (farmer)
 router.post('/:id/generate-qr', generateQr);

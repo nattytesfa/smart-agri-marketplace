@@ -25,6 +25,7 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
     ListingListScreen(), // Browse
     MyListingsScreen(), // My Listings
     ListingCreateScreen(), // Sell
+    DeboBatchListScreen(isFarmer: true),
     ProfileScreen(), // Profile
     AdvisoryScreen(), // Advisory
   ];
@@ -62,6 +63,7 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
                 icon: Icon(Icons.inventory_2_outlined), label: 'My Listings'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.add_circle_outline_rounded), label: 'Sell'),
+            BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Debo'),
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.light_mode), label: 'Advice'),

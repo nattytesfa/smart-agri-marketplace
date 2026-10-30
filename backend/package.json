@@ -10,7 +10,10 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest --runInBand --passWithNoTests",
-    "test:listings:db": "node tests/listing.database.js"
+    "test:listings:db": "node tests/listing.database.js",
+    "test:debo:db": "node tests/debo.database.js",
+    "checkouts:recover": "node src/jobs/recoverCheckouts.js",
+    "test:connectivity:live": "node tests/connectivity.live.js"
   },
   "keywords": [],
   "author": "",

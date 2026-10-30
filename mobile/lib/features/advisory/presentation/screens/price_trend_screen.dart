@@ -1,7 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../../../../core/config/env_config.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class PriceTrendScreen extends StatefulWidget {
@@ -50,7 +50,7 @@ class _PriceTrendScreenState extends State<PriceTrendScreen> {
       return;
     }
 
-    final baseUrl = dotenv.env['BACKEND_API_BASE_URL']!;
+    final baseUrl = EnvConfig.backendBaseUrl;
     try {
       final response = await _dio.get(
         '$baseUrl/api/advisory/prices',

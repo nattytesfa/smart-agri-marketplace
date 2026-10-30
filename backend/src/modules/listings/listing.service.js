@@ -2,7 +2,7 @@ const pool = require('../../config/db');
 const { randomUUID } = require('crypto');
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const columns = `l.*, l.harvest_date::text AS harvest_date, ST_Y(l.location_gps) AS lat, ST_X(l.location_gps) AS lng,
-  u.full_name AS farmer_name`;
+  u.full_name AS farmer_name, public.debo_available(l) AS available_quantity`;
 const getListing = async (id, db = pool, includeDeleted = false) => {
   const r = await db.query(`SELECT ${columns} FROM produce_listings l JOIN users u ON u.user_id=l.farmer_id
     WHERE l.listing_id=$1 ${includeDeleted ? '' : 'AND l.deleted_at IS NULL'}`, [id]);
@@ -25,14 +25,15 @@ const save = async (data, farmerId, id) => {
     if (existing && !id) {
       if (existing.deleted_at) throw fail(409, 'Listing was removed; create a new listing instead');
       await db.query('COMMIT');
-      return getListing(existing.listing_id);
+      return await getListing(existing.listing_id, db);
     }
     if (existing && data.operation_id && data.operation_id === existing.last_operation_id) {
       await db.query('COMMIT');
-      return getListing(existing.listing_id);
+      return await getListing(existing.listing_id, db);
     }
     if (existing && (existing.deleted_at || existing.version !== data.version)) throw fail(409, 'Listing changed on the server. Refresh before editing again.');
     if (existing && existing.status !== 'available') throw fail(409, 'Reserved or sold listings cannot be edited');
+    if (existing && (await db.query("SELECT 1 FROM debo_batch_listings WHERE listing_id=$1 AND reservation_status IN ('active','fulfilled')",[existing.listing_id])).rowCount) throw fail(409,'Listing has committed Digital Debo stock and cannot be edited');
     const values = [farmerId, data.crop_type, data.variety, data.quantity, data.unit || 'quintal', data.price_per_unit,
       data.location_lng ?? null, data.location_lat ?? null, data.kebele || null, data.harvest_date || null,
       data.quality_grade || null, data.description || null, data.image_url || null, data.status || 'available', clientId, data.operation_id || null];
@@ -51,7 +52,7 @@ const save = async (data, farmerId, id) => {
         version=version+1,updated_at=now() WHERE listing_id=$17 AND farmer_id=$1 AND version=$18 RETURNING listing_id`, values);
     }
     await db.query('COMMIT');
-    return getListing(result.rows[0].listing_id);
+    return await getListing(result.rows[0].listing_id, db);
   } catch (e) { await db.query('ROLLBACK'); throw e; } finally { db.release(); }
 };
 const createListing = (data, farmerId) => save(data, farmerId);
@@ -68,13 +69,15 @@ const getFarmerListings = async farmerId => (await pool.query(`SELECT ${columns}
   JOIN users u ON u.user_id=l.farmer_id WHERE l.farmer_id=$1 AND l.deleted_at IS NULL ORDER BY l.created_at DESC`, [farmerId])).rows;
 
 const getAvailableListings = async (filters = {}, admin = false) => {
+  await require('../transactionsEscrow/transaction.service').recoverCheckouts();
   const values = [];
   const bind = value => { values.push(value); return `$${values.length}`; };
   let distance = 'NULL::double precision';
   if (filters.lat != null && filters.lng != null) distance = `ST_Distance(l.location_gps::geography,ST_SetSRID(ST_MakePoint(${bind(+filters.lng)},${bind(+filters.lat)}),4326)::geography)`;
-  let sql = `SELECT ${columns}, ${distance} AS distance_meters ${admin ? ',u.phone_number AS farmer_phone' : ''}
+  let sql = `SELECT ${columns}, ${admin ? 'l.quantity' : 'public.debo_available(l)'} AS quantity,l.quantity AS total_quantity, ${distance} AS distance_meters ${admin ? ',u.phone_number AS farmer_phone' : ''}
     FROM produce_listings l JOIN users u ON u.user_id=l.farmer_id WHERE l.deleted_at IS NULL`;
   if (!admin || filters.status) sql += ` AND l.status=${bind(filters.status || 'available')}`;
+  if (!admin) sql += " AND l.sync_status='cloud' AND public.debo_available(l)>0";
   if (filters.crop_type) sql += ` AND lower(l.crop_type)=lower(${bind(filters.crop_type)})`;
   if (filters.unit) sql += ` AND l.unit=${bind(filters.unit)}`;
   if (filters.min_price != null) sql += ` AND l.price_per_unit>=${bind(+filters.min_price)}`;
@@ -93,7 +96,7 @@ const getAvailableListings = async (filters = {}, admin = false) => {
 // Tombstones retain transaction foreign keys and prevent replay resurrecting deletions.
 const deleteListing = async (id, farmerId, version, admin = false) => {
   const r = await pool.query(`UPDATE produce_listings SET deleted_at=coalesce(deleted_at,now()),updated_at=now(),version=version+1
-    WHERE listing_id=$1 ${admin ? '' : "AND farmer_id=$2 AND (deleted_at IS NOT NULL OR (status='available' AND version=$3))"} RETURNING listing_id`, admin ? [id] : [id,farmerId,version]);
+    WHERE listing_id=$1 AND NOT EXISTS(SELECT 1 FROM debo_batch_listings d WHERE d.listing_id=produce_listings.listing_id AND d.reservation_status IN ('active','fulfilled')) ${admin ? '' : "AND farmer_id=$2 AND (deleted_at IS NOT NULL OR (status='available' AND version=$3))"} RETURNING listing_id`, admin ? [id] : [id,farmerId,version]);
   if (!r.rows.length) throw fail(409, 'Listing unavailable, not owned by you, reserved, or changed. Refresh first.');
   return r.rows[0];
 };

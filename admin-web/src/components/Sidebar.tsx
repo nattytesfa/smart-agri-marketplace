@@ -27,6 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
       { name: 'User Verification', href: '/users', icon: 'shield-check' },
       { name: 'Escrow Management', href: '/transactions', icon: 'wallet' },
       { name: 'Listings', href: '/listings', icon: 'package' },
+      { name: 'Digital Debo', href: '/debo', icon: 'user-group' },
       { name: 'Subscriptions', href: '/subscriptions', icon: 'card' },
       { name: 'Field Agents', href: '/agents', icon: 'user-group' },
     ],

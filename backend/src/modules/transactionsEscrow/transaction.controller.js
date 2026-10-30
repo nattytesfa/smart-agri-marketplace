@@ -1,10 +1,10 @@
 const transactionService = require('./transaction.service');
-const telebirr = require('./telebirr.integration');
 const { validationResult } = require('express-validator');
 
 // POST /api/transactions/initiate
 const initiateTransaction = async (req, res, next) => {
   try {
+    await transactionService.recoverCheckouts();
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -28,20 +28,13 @@ const initiateTransaction = async (req, res, next) => {
       payment_method,
     });
 
-    // If payment_method is 'telebirr', initiate payment
-    let paymentResponse = null;
-    if (payment_method === 'telebirr' || payment_method === 'cbe_birr') {
-      // In sandbox, we skip actual payment
-      // In production, we would redirect to payment gateway
-      paymentResponse = await telebirr.initiatePayment(
-        transaction.amount,
-        req.user.phone_number,
-        transaction.transaction_id
-      );
-    }
+    // No gateway is called. This explicit mode is the evidence that makes a
+    // prototype timeout safely cancellable, unlike a missing external callback.
+    const paymentResponse = {simulated:true,status:'pending',checkout_url:null};
 
     res.status(201).json({
-      message: 'Transaction initiated. Escrow locked.',
+      message: 'Prototype checkout recorded. Payment is pending; no funds collected or escrow funded.',
+      simulated: true,
       transaction: transaction,
       payment: paymentResponse,
     });
@@ -54,30 +47,14 @@ const initiateTransaction = async (req, res, next) => {
 // POST /api/webhooks/telebirr
 const handleWebhook = async (req, res, next) => {
   try {
-    const { transaction_id, reference, status } = req.body;
+    const { transaction_id } = req.body;
 
     // Verify webhook signature (stub for now)
-    if (!transaction_id) {
+    if (typeof transaction_id!=='string' || !/^[0-9a-f-]{36}$/i.test(transaction_id)) {
       return res.status(400).json({ error: 'Missing transaction_id' });
     }
-
-    if (status === 'completed') {
-      // Confirm payment
-      await transactionService.confirmPayment(transaction_id, reference);
-      
-      // Get transaction details to notify farmer
-      const transaction = await transactionService.getTransaction(transaction_id);
-      
-      // Send notification to farmer
-      if (transaction) {
-        await telebirr.sendSms(
-          transaction.farmer_phone,
-          `✅ Payment of ETB ${transaction.amount} locked in escrow. Proceed with delivery for transaction ${transaction_id}`
-        );
-      }
-    }
-
-    res.status(200).json({ message: 'Webhook processed' });
+    await transactionService.recordUnverifiedNotification(transaction_id,req.body);
+    res.status(503).json({error:'Payment verification is not configured. Notification recorded as unverified; no payment or inventory state was accepted.'});
   } catch (error) {
     next(error);
   }
@@ -92,6 +69,8 @@ const getTransaction = async (req, res, next) => {
     if (!transaction) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
+
+    if (transaction.buyer_id!==req.user.id && transaction.farmer_id!==req.user.id) return res.status(404).json({error:'Transaction not found'});
 
     res.status(200).json(transaction);
   } catch (error) {
@@ -126,6 +105,7 @@ const generateQr = async (req, res, next) => {
     if (transaction.farmer_id !== farmerId) {
       return res.status(403).json({ error: 'Not authorized to generate QR for this transaction' });
     }
+    if (transaction.payment_status!=='confirmed') return res.status(409).json({error:'Payment is pending; delivery QR cannot be issued yet'});
 
     // Generate QR token
     const qrToken = await transactionService.generateQrToken(id);
@@ -159,27 +139,29 @@ const releaseEscrow = async (req, res, next) => {
     }
 
     // Verify QR token matches
-    if (transaction.qr_token !== qr_token) {
+    if (typeof qr_token!=='string' || !qr_token || !transaction.qr_token || transaction.qr_token !== qr_token) {
       return res.status(400).json({ error: 'Invalid QR token' });
     }
 
     // Release escrow
-    await transactionService.releaseEscrow(id);
-
-    // Notify farmer
-    await telebirr.sendSms(
-      transaction.farmer_phone,
-      `💰 Funds of ETB ${transaction.amount} released to your wallet for transaction ${id}`
-    );
+    const changed=await transactionService.releaseEscrow(id);
 
     res.status(200).json({
-      message: 'Escrow released successfully',
+      message: changed ? 'Verified prototype fulfillment recorded. No real payout was performed.' : 'Transaction was already processed.',
+      simulated: true,
       transaction_id: id,
     });
 
   } catch (error) {
     next(error);
   }
+};
+
+const cancelCheckout = async (req,res,next) => {
+  try {
+    await transactionService.recoverCheckouts();
+    res.json(await transactionService.cancelCheckout(req.params.id,req.user.id));
+  } catch(e){next(e);}
 };
 
 module.exports = {
@@ -189,4 +171,5 @@ module.exports = {
   getMyTransactions,
   generateQr,
   releaseEscrow,
+  cancelCheckout,
 };

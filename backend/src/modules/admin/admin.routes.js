@@ -16,6 +16,7 @@ const router = express.Router();
 // All routes require auth + admin role
 router.use(authMiddleware);
 router.use(isAdmin);
+router.get('/debo/batches', require('../digitalDebo/debo.controller').adminList);
 
 // User management
 router.get('/users', getPendingUsers);
@@ -27,6 +28,7 @@ router.delete('/listings/:id', deleteListing);
 
 // Transaction monitoring
 router.get('/transactions', getTransactions);
+router.get('/transactions/summary', require('./admin.controller').getTransactionSummary);
 router.post('/transactions/:id/resolve', resolveDispute);
 
 // Analytics heatmap

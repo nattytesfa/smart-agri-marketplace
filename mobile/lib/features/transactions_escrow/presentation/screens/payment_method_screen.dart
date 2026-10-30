@@ -75,8 +75,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (mounted) {
           setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Payment initiated! Escrow locked.'),
+            SnackBar(
+              content: const Text(
+                  'Prototype checkout recorded. Payment pending; no real funds collected or escrow funded.'),
               backgroundColor: Colors.green,
             ),
           );
