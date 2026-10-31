@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { diagnostic } = require('./accountIdentity');
 
 // Generic role-based access control middleware
 const rbac = (allowedRoles) => {
@@ -9,7 +10,13 @@ const rbac = (allowedRoles) => {
         [req.user.id]
       );
       if (result.rows.length === 0 || !allowedRoles.includes(result.rows[0].role)) {
-        return res.status(403).json({ error: 'Access denied. Insufficient permissions.' });
+        const actual = result.rows[0]?.role;
+        diagnostic(req, 'role_rejected', 403, { required_roles: allowedRoles });
+        return res.status(403).json({
+          error: actual ? `This account is registered as ${actual}. ${allowedRoles.join(' or ')} access is required. Sign in with the appropriate account.` : 'Complete account registration before starting checkout.',
+          code: actual ? 'ROLE_REQUIRED' : 'ACCOUNT_REGISTRATION_REQUIRED',
+          required_roles: allowedRoles, current_role: actual || null,
+        });
       }
       next();
     } catch (error) {

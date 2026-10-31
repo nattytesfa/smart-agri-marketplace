@@ -26,6 +26,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { name: 'User Verification', href: '/users', icon: 'shield-check' },
       { name: 'Escrow Management', href: '/transactions', icon: 'wallet' },
+      { name: 'Demo Wallet Audit', href: '/wallets', icon: 'wallet' },
       { name: 'Listings', href: '/listings', icon: 'package' },
       { name: 'Digital Debo', href: '/debo', icon: 'user-group' },
       { name: 'Subscriptions', href: '/subscriptions', icon: 'card' },

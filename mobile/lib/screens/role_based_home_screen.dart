@@ -7,6 +7,9 @@ import '../features/listings/presentation/screens/listing_create_screen.dart';
 import '../features/digital_debo/presentation/screens/debo_batch_list_screen.dart';
 import 'advisory_screen.dart';
 import '../features/listings/presentation/widgets/marketplace_ui.dart';
+import '../features/transactions_escrow/presentation/screens/wallet_screen.dart';
+import '../data/remote/transactions_api.dart';
+import '../services/auth_service.dart';
 
 class RoleBasedHomeScreen extends StatefulWidget {
   const RoleBasedHomeScreen({super.key});
@@ -19,6 +22,7 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
   final _storage = const FlutterSecureStorage();
   int _currentIndex = 0;
   String? _userRole;
+  String? _accountError;
 
   // Farmer screens
   final List<Widget> _farmerScreens = const [
@@ -28,13 +32,14 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
     DeboBatchListScreen(isFarmer: true),
     ProfileScreen(), // Profile
     AdvisoryScreen(), // Advisory
+    WalletScreen(),
   ];
 
   // Buyer screens
   final List<Widget> _buyerScreens = const [
     ListingListScreen(), // Browse
     DeboBatchListScreen(), // Debo (bulk buy)
-    Placeholder(), // Transactions
+    WalletScreen(),
     ProfileScreen(), // Profile
   ];
 
@@ -45,14 +50,44 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
   }
 
   Future<void> _loadUserRole() async {
-    final role = await _storage.read(key: 'user_role');
-    if (mounted) setState(() => _userRole = role ?? 'buyer');
+    try {
+      final account = await TransactionsApi().account();
+      final role = account['role'] as String;
+      await _storage.write(key: 'user_id', value: account['user_id']);
+      await _storage.write(key: 'user_role', value: role);
+      if (mounted) {
+        setState(() {
+          _userRole = role;
+          _accountError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _accountError = TransactionsApi.error(e));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_userRole == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+          body: Center(
+              child: _accountError == null
+                  ? const CircularProgressIndicator()
+                  : Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(_accountError!),
+                      TextButton(
+                          onPressed: _loadUserRole,
+                          child: const Text('Retry account verification')),
+                      TextButton(
+                          onPressed: () async {
+                            await AuthService().discardSession();
+                            if (context.mounted) {
+                              Navigator.pushNamedAndRemoveUntil(
+                                  context, '/login', (_) => false);
+                            }
+                          },
+                          child: const Text('Sign in / register')),
+                    ])));
     }
     final isFarmer = _userRole == 'farmer';
     final screens = isFarmer ? _farmerScreens : _buyerScreens;
@@ -67,11 +102,14 @@ class _RoleBasedHomeScreenState extends State<RoleBasedHomeScreen> {
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
             BottomNavigationBarItem(
                 icon: Icon(Icons.light_mode), label: 'Advice'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
           ]
         : const [
             BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Browse'),
             BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Debo'),
-            BottomNavigationBarItem(icon: Icon(Icons.receipt), label: 'Orders'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.account_balance_wallet), label: 'Wallet'),
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
           ];
 

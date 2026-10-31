@@ -162,7 +162,8 @@ class _AdvisoryScreenState extends State<AdvisoryScreen> {
                   const SizedBox(height: 8),
                   if (isUrgent)
                     const Chip(
-                      label: Text('URGENT', style: TextStyle(color: Colors.white)),
+                      label:
+                          Text('URGENT', style: TextStyle(color: Colors.white)),
                       backgroundColor: Colors.red,
                     ),
                   const SizedBox(height: 12),
@@ -206,14 +207,16 @@ class _AdvisoryScreenState extends State<AdvisoryScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Current Price:'),
-                      Text('ETB ${_advice!['price']['current_price'] ?? 'N/A'}'),
+                      Text(
+                          'ETB ${_advice!['price']['current_price'] ?? 'N/A'}'),
                     ],
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Average Price:'),
-                      Text('ETB ${_advice!['price']['average_price'] ?? 'N/A'}'),
+                      Text(
+                          'ETB ${_advice!['price']['average_price'] ?? 'N/A'}'),
                     ],
                   ),
                   Row(
@@ -231,17 +234,20 @@ class _AdvisoryScreenState extends State<AdvisoryScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text('5-day forecast:', style: TextStyle(fontWeight: FontWeight.w500)),
-                  ...(_advice!['weather']['forecast'] as List<dynamic>).take(5).map((day) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(day['date'] ?? ''),
-                            Text('${day['rain_prob']}% rain'),
-                          ],
-                        ),
-                      )),
+                  const Text('5-day forecast:',
+                      style: TextStyle(fontWeight: FontWeight.w500)),
+                  ...(_advice!['weather']['forecast'] as List<dynamic>)
+                      .take(5)
+                      .map((day) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(day['date'] ?? ''),
+                                Text('${day['rain_prob']}% rain'),
+                              ],
+                            ),
+                          )),
                 ],
               ),
             ),

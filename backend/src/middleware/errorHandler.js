@@ -6,6 +6,7 @@ const errorHandler = (err, req, res, next) => {
     : err.code === '23503' || err.code === '23505' ? 409 : err.status || 500;
   res.status(status).json({ error: status >= 500 ? 'Service temporarily unavailable. Please retry.'
     : err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 200 KB'
-    : err.code ? 'Invalid listing data or conflicting operation' : err.message });
+    : err.code ? 'Invalid listing data or conflicting operation' : err.message,
+    ...(status < 500 && err.publicCode ? { code: err.publicCode } : {}) });
 };
 module.exports = errorHandler;

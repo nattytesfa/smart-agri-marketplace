@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const pool = require('../../config/db');
-const logger = require('../../config/logger');
 
 // Check if user exists in local users table
 const findUserByPhone = async (phone) => {
@@ -69,38 +68,15 @@ const createBuyerProfile = async (userId, buyerType = 'retailer', businessName =
 
 // Get user with profile
 //
-// `session` is the Supabase auth user behind the request. Its id is normally
-// the local user_id, but a row can end up stored under a different id (seeded
-// data, an auth user deleted and recreated). /api/auth/me is what decides
-// whether the app considers a phone registered, so falling back to the phone —
-// the identity that cannot drift — keeps a real account from being reported as
-// "not registered", which sends the user into a registration flow that then
-// rejects their number with a 409.
-const getUserById = async (userId, session = null) => {
-  let result = await pool.query(
+// Authentication resolves the explicit auth_user_id link before calling here.
+// Do not introduce a phone-only fallback that disagrees with protected routes.
+const getUserById = async (userId) => {
+  const result = await pool.query(
     `SELECT user_id, phone_number, fayda_id, fayda_verified, fayda_verified_at, role, language_pref,
             full_name, region, zone, kebele, created_at
      FROM users WHERE user_id = $1`,
     [userId]
   );
-
-  if (result.rows.length === 0 && session?.phone) {
-    const phone = toE164(session.phone);
-    result = await pool.query(
-      `SELECT user_id, phone_number, fayda_id, fayda_verified, fayda_verified_at, role, language_pref,
-              full_name, region, zone, kebele, created_at
-       FROM users WHERE phone_number = $1
-       ORDER BY created_at ASC
-       LIMIT 1`,
-      [phone]
-    );
-    if (result.rows.length > 0) {
-      logger.warn(
-        `getUserById: session ${userId} had no local row; ` +
-          `matched ${phone} to user_id ${result.rows[0].user_id}`
-      );
-    }
-  }
 
   if (result.rows.length === 0) return null;
   const user = result.rows[0];

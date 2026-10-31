@@ -45,6 +45,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/debo', deboRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/wallet', require('./modules/transactionsEscrow/wallet.routes'));
 app.use('/api/advisory', advisoryRoutes);
 app.use('/api/admin', adminRoutes);
 

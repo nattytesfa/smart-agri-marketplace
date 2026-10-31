@@ -33,11 +33,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('ETB 15003.75'), findsOneWidget);
-      expect(find.text('Buy full listing').hitTestable(), findsOneWidget);
+      expect(
+          find.text('Choose purchase quantity').hitTestable(), findsOneWidget);
       await tester.drag(find.byType(ListView), const Offset(0, -1600));
       await tester.pumpAndSettle();
       expect(find.text('Abebe Farm'), findsOneWidget);
-      expect(find.text('Buy full listing').hitTestable(), findsOneWidget);
+      expect(find.text('Choose purchase quantity').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
@@ -47,7 +48,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: ListingDetailScreen(listing: produce(status: 'sold'))));
     await tester.pumpAndSettle();
-    expect(find.text('Buy full listing'), findsNothing);
+    expect(find.text('Choose purchase quantity'), findsNothing);
     expect(find.text('SOLD'), findsOneWidget);
   });
 
@@ -58,7 +59,7 @@ void main() {
         home: ListingDetailScreen(listing: produce(), owner: true)));
     await tester.pumpAndSettle();
     expect(find.text('YOUR LISTING'), findsOneWidget);
-    expect(find.text('Buy full listing'), findsNothing);
+    expect(find.text('Choose purchase quantity'), findsNothing);
     await tester.scrollUntilVisible(find.text('Edit listing'), 400);
     expect(find.text('Edit listing'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);

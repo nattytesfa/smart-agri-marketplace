@@ -30,6 +30,7 @@ Thumbs.db
 */.dart_tool/
 */.packages
 */build/
+*/android/build/
 */.flutter-plugins
 */.flutter-plugins-dependencies
 */.pub-cache/
@@ -47,6 +48,11 @@ Thumbs.db
 */ios/Flutter/flutter_export_environment.sh
 */ios/ServiceDefinitions.json
 */ios/Runner/GeneratedPluginRegistrant.*
+
+# Flutter's Android plugin registrant is generated into the build tree. A copy
+# under android/app/src/main/java/ is stale by definition, shadows the generated
+# one, and fails the Java compile after any plugin upgrades to Kotlin.
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 
 # --- Backend & Admin Web (Node.js/Next.js) ---
 node_modules/
@@ -68,3 +74,7 @@ coverage/
 # Build directories
 dist/
 lib-cov/
+
+# Local OIDC scratch harness and ad-hoc scripts
+oidc-test-app/
+test_script.dart

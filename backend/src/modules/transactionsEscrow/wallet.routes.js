@@ -1,0 +1,14 @@
+const router = require('express').Router();
+const {rbac} = require('../../middleware/rbac');
+const wallet = require('./wallet.service');
+const handle = fn => async (req,res,next) => { try { res.json(await fn(req)); } catch(e) { next(e); } };
+router.use(require('../../middleware/auth'));
+router.get('/admin',rbac(['admin']),handle(req=>wallet.admin(req.query)));
+router.get('/admin/:owner/history',rbac(['admin']),handle(req=>wallet.history(req.params.owner,req.query)));
+router.get('/admin/:owner',rbac(['admin']),handle(req=>wallet.summary(req.params.owner)));
+router.use(rbac(['buyer','farmer']));
+router.get('/',handle(req=>wallet.summary(req.user.id)));
+router.get('/history',handle(req=>wallet.history(req.user.id,req.query)));
+router.get('/checkouts/:id',rbac(['buyer']),handle(req=>wallet.quote(req.user.id,req.params.id)));
+router.post('/top-ups',rbac(['buyer']),handle(req=>wallet.topUp(req.user.id,req.body || {})));
+module.exports = router;

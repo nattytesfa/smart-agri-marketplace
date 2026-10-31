@@ -84,8 +84,11 @@ cd ..
 You will need:
 - Supabase URL + anon key + service role key
 - Telebirr / CBE Birr sandbox keys
-- Fayda test API key
 - NMA / OpenWeather API keys (if available)
+
+Fayda national ID needs no external key: run the bundled mock provider in
+`mock-fayda/` (`npm install && cp .env.example .env && npm run keys && npm start`).
+See `mock-fayda/README.md`.
 
 Never commit `.env`, `.env.local`, or any secret value.
 
@@ -183,3 +186,10 @@ flutter pub get
 - Architecture, DB schema, API table, build phases: [docs/implementation_guide.md](./docs/implementation_guide.md)
 - Task board: [https://github.com/nattytesfa/smart-agri-marketplace](https://github.com/nattytesfa/smart-agri-marketplace)
 - Team chat: [Telegram Group](https://t.me/c/3235985205/3)
+## Demo Wallets (virtual funds only)
+
+Buyer/farmer Wallet & Escrow setup, migration 011, API details, accounting rules,
+verification results and the 501,000 ETB defense walkthrough are documented in
+[`docs/demo_wallets.md`](docs/demo_wallets.md). Wallet funding requires both
+`SIMULATED_PAYMENTS_ENABLED=true` and `DEMO_WALLETS_ENABLED=true` in an approved
+development/demo environment. There are no real deposits, withdrawals or payouts.

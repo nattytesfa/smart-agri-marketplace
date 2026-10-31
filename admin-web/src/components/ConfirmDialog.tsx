@@ -27,33 +27,56 @@ export default function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
 
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCancel();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!busy) onCancel();
+      }
+      if (event.key === 'Tab') {
+        const buttons = panelRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+        if (!buttons?.length) { event.preventDefault(); panelRef.current?.focus(); return; }
+        const first = buttons[0], last = buttons[buttons.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !panelRef.current?.contains(document.activeElement))) {
+          event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !panelRef.current?.contains(document.activeElement))) {
+          event.preventDefault(); first.focus();
+        }
+      }
     };
 
     document.addEventListener('keydown', onKeyDown);
     document.body.style.overflow = 'hidden';
-    confirmRef.current?.focus();
+    // Start on the safe action rather than accidentally accepting a financial decision.
+    if (busy) panelRef.current?.focus();
+    else cancelRef.current?.focus();
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [open, onCancel]);
+  }, [open, onCancel, busy]);
 
   if (!open) return null;
 
   return (
     <div className="dialog" role="presentation">
-      <div className="dialog__overlay" onClick={onCancel} aria-hidden="true" />
+      <div className="dialog__overlay" onClick={busy ? undefined : onCancel} aria-hidden="true" />
       <div
         className="dialog__panel"
+        ref={panelRef}
+        tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
+        aria-busy={busy}
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
       >
@@ -69,6 +92,7 @@ export default function ConfirmDialog({
         <div className="dialog__actions">
           <button
             type="button"
+            ref={cancelRef}
             className="btn btn--secondary"
             onClick={onCancel}
             disabled={busy}

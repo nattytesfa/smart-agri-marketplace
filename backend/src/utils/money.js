@@ -24,7 +24,10 @@ const lineMinor = (quantity,price) => {
   const numerator=q.coefficient*p.coefficient*100n, denominator=10n**BigInt(q.scale+p.scale);
   return (numerator+denominator/2n)/denominator;
 };
-const formatMinor = minor => `${minor/100n}.${String(minor%100n).padStart(2,'0')}`;
+const formatMinor = minor => {
+  const absolute = minor < 0n ? -minor : minor;
+  return `${minor < 0n ? '-' : ''}${absolute/100n}.${String(absolute%100n).padStart(2,'0')}`;
+};
 const sumMoney = values => formatMinor(values.reduce((sum,v)=>sum+lineMinor(1,v ?? 0),0n));
 // Exact price ceiling comparison across compatible mass units.
 const withinPrice = (price,requestUnitMass,listingUnitMass,maxPrice) => {

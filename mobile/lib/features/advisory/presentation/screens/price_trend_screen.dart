@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/config/env_config.dart';
@@ -19,7 +18,13 @@ class _PriceTrendScreenState extends State<PriceTrendScreen> {
   String? _errorMessage;
   Map<String, dynamic>? _priceData;
   final TextEditingController _cropController = TextEditingController();
-  final List<String> _commonCrops = ['teff', 'wheat', 'maize', 'barley', 'coffee'];
+  final List<String> _commonCrops = [
+    'teff',
+    'wheat',
+    'maize',
+    'barley',
+    'coffee'
+  ];
 
   @override
   void initState() {
@@ -109,13 +114,15 @@ class _PriceTrendScreenState extends State<PriceTrendScreen> {
             // Quick crop chips
             Wrap(
               spacing: 8,
-              children: _commonCrops.map((crop) => ActionChip(
-                label: Text(crop),
-                onPressed: () {
-                  _cropController.text = crop;
-                  _fetchPrices();
-                },
-              )).toList(),
+              children: _commonCrops
+                  .map((crop) => ActionChip(
+                        label: Text(crop),
+                        onPressed: () {
+                          _cropController.text = crop;
+                          _fetchPrices();
+                        },
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 16),
 
@@ -179,7 +186,8 @@ class _PriceTrendScreenState extends State<PriceTrendScreen> {
                 const SizedBox(width: 8),
                 Text(
                   trend.toUpperCase(),
-                  style: TextStyle(color: trendColor, fontWeight: FontWeight.bold),
+                  style:
+                      TextStyle(color: trendColor, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(width: 16),
                 Text(

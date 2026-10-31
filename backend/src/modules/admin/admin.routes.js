@@ -29,6 +29,9 @@ router.delete('/listings/:id', deleteListing);
 // Transaction monitoring
 router.get('/transactions', getTransactions);
 router.get('/transactions/summary', require('./admin.controller').getTransactionSummary);
+router.get('/transactions/simulations', require('../transactionsEscrow/simulation.controller').adminList);
+router.get('/transactions/:id', require('../transactionsEscrow/simulation.controller').adminDetails);
+router.post('/disputes/:did/resolve', require('../transactionsEscrow/simulation.controller').resolve);
 router.post('/transactions/:id/resolve', resolveDispute);
 
 // Analytics heatmap

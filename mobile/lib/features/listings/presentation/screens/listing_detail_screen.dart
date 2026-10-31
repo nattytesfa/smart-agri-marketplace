@@ -140,7 +140,7 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                             children: [
                                               const Expanded(
                                                   child: Text(
-                                                      'Full listing total',
+                                                      'Available produce estimate',
                                                       style: TextStyle(
                                                           color: marketMuted,
                                                           fontSize: 12))),
@@ -164,6 +164,9 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                                       builder: (_) =>
                                                           PaymentScreen(
                                                               listingId: l.id!,
+                                                              quantity: l
+                                                                  .quantity
+                                                                  .toString(),
                                                               farmerId:
                                                                   l.farmerId!,
                                                               amount: total,
@@ -173,11 +176,11 @@ class _ListingDetailScreenState extends State<ListingDetailScreen> {
                                                   Icons.shopping_bag_outlined,
                                                   size: 20),
                                               label: const Text(
-                                                  'Buy full listing'),
+                                                  'Choose purchase quantity'),
                                             )),
                                         const SizedBox(height: 8),
                                         const Text(
-                                            'Purchase the entire quantity listed above.',
+                                            'Choose quantity and review the server-confirmed amount before demo payment.',
                                             style: TextStyle(
                                                 color: marketMuted,
                                                 fontSize: 11)),

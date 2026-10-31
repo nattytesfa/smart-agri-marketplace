@@ -6,13 +6,14 @@ const { body } = require('express-validator');
 const {
   initiateTransaction,
   handleWebhook,
-  getTransaction,
-  getMyTransactions,
-  generateQr,
-  releaseEscrow,
 } = require('./transaction.controller');
 
 const router = express.Router();
+const simulation = require('./simulation.controller');
+router.param('id', (req, res, next, id) => {
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) return res.status(400).json({error:'Invalid transaction ID'});
+  next();
+});
 
 // Public webhook endpoint (no auth required)
 router.post('/webhooks/telebirr', handleWebhook);
@@ -23,19 +24,25 @@ router.use(authMiddleware);
 
 // POST /api/transactions/initiate
 router.post('/initiate', rbac(['buyer']), body('listing_id').optional().isUUID(), body('batch_id').optional().isUUID(),
-  body('payment_method').isIn(['telebirr','cbe_birr']), validateRequest, initiateTransaction);
+  body('request_id').optional().isUUID(), body('quantity').optional().isDecimal(),
+  body('payment_method').isIn(['telebirr','cbe_birr','demo_wallet']), validateRequest, initiateTransaction);
 
 // GET /api/transactions
-router.get('/', getMyTransactions);
+router.get('/', simulation.list);
 
 // GET /api/transactions/:id
-router.get('/:id', getTransaction);
+router.get('/:id', simulation.details);
 router.post('/:id/cancel', rbac(['buyer']), require('./transaction.controller').cancelCheckout);
+router.post('/:id/simulate-payment', rbac(['buyer']), simulation.pay);
+router.post('/:id/allocations/:aid/ready', rbac(['farmer']), simulation.ready);
+router.post('/:id/allocations/:aid/qr', rbac(['farmer']), simulation.qr);
+router.post('/:id/allocations/:aid/verify-delivery', rbac(['buyer']), simulation.verify);
+router.post('/:id/allocations/:aid/settle', rbac(['buyer','farmer']), simulation.settle);
+router.post('/:id/allocations/:aid/disputes', rbac(['buyer']), simulation.dispute);
 
-// POST /api/transactions/:id/generate-qr (farmer)
-router.post('/:id/generate-qr', generateQr);
+// Old reusable transaction-level QR contracts are retired (410).
+router.post('/:id/generate-qr', simulation.legacyQr);
 
-// POST /api/transactions/:id/release (buyer with QR)
-router.post('/:id/release', releaseEscrow);
+router.post('/:id/release', simulation.legacyQr);
 
 module.exports = router;

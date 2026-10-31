@@ -196,28 +196,21 @@ class _DeboBatchDetailScreenState extends State<DeboBatchDetailScreen> {
                   if (b['can_manage'] == true &&
                       b['transaction_ready'] == true) ...[
                     const Text(
-                        'Ready for transaction review. Payments are prototype-only: no real funds are collected. Multi-farmer payout is not yet supported by the existing single-payee escrow service.'),
-                    if ((b['listings'] as List)
-                            .where((l) => l['reservation_status'] == 'active')
-                            .map((l) => l['farmer_id'])
-                            .toSet()
-                            .length ==
-                        1)
-                      FilledButton(
-                          onPressed: () async {
-                            await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => PaymentScreen(
-                                        listingId: widget.batchId,
-                                        farmerId: '',
-                                        amount:
-                                            deboNumber(b['confirmed_total']),
-                                        cropType: b['crop_type'],
-                                        isBatch: true)));
-                            if (mounted) _load();
-                          },
-                          child: const Text('Review prototype payment')),
+                        'Ready for simulated checkout. Each farmer has a separate delivery and settlement allocation. No real funds move.'),
+                    FilledButton(
+                        onPressed: () async {
+                          await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => PaymentScreen(
+                                      listingId: widget.batchId,
+                                      farmerId: '',
+                                      amount: deboNumber(b['confirmed_total']),
+                                      cropType: b['crop_type'],
+                                      isBatch: true)));
+                          if (mounted) _load();
+                        },
+                        child: const Text('Review prototype payment')),
                   ],
                   const Text(
                       'Refresh to see new confirmations. Only successful reservations count toward batch completion.'),

@@ -926,6 +926,9 @@
   position: relative;
   width: 100%;
   max-width: 26rem;
+  max-height: calc(100vh - 2 * var(--space-4));
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
   padding: var(--space-6);
   background-color: var(--bg-surface);
   border: 1px solid var(--border);
@@ -962,6 +965,7 @@
 }
 
 .dialog__message {
+  overflow-wrap: anywhere;
   font-size: var(--text-base);
   color: var(--text-muted);
   line-height: var(--leading-normal);
@@ -969,12 +973,13 @@
 
 .dialog__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin-top: var(--space-6);
 }
 
 .dialog__actions .btn {
-  flex: 1;
+  flex: 1 1 10rem;
 }
 
 /* --------------------------------------------------------------------------

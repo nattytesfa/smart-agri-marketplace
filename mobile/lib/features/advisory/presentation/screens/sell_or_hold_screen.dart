@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/config/env_config.dart';
@@ -139,7 +138,8 @@ class _SellOrHoldScreenState extends State<SellOrHoldScreen> {
                   const SizedBox(height: 8),
                   if (isUrgent)
                     const Chip(
-                      label: Text('URGENT', style: TextStyle(color: Colors.white)),
+                      label:
+                          Text('URGENT', style: TextStyle(color: Colors.white)),
                       backgroundColor: Colors.red,
                     ),
                   const SizedBox(height: 12),
@@ -179,11 +179,16 @@ class _SellOrHoldScreenState extends State<SellOrHoldScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const Divider(),
-                  _buildDetailRow('Current Price', 'ETB ${_advice!['price']['current_price'] ?? 'N/A'}'),
-                  _buildDetailRow('Average Price', 'ETB ${_advice!['price']['average_price'] ?? 'N/A'}'),
-                  _buildDetailRow('Price Trend', _advice!['price']['trend'] ?? 'N/A'),
-                  _buildDetailRow('Rain Probability', '${_advice!['weather']['rain_probability'] ?? 0}%'),
-                  _buildDetailRow('Storage Type', _advice!['storage_type'] ?? 'N/A'),
+                  _buildDetailRow('Current Price',
+                      'ETB ${_advice!['price']['current_price'] ?? 'N/A'}'),
+                  _buildDetailRow('Average Price',
+                      'ETB ${_advice!['price']['average_price'] ?? 'N/A'}'),
+                  _buildDetailRow(
+                      'Price Trend', _advice!['price']['trend'] ?? 'N/A'),
+                  _buildDetailRow('Rain Probability',
+                      '${_advice!['weather']['rain_probability'] ?? 0}%'),
+                  _buildDetailRow(
+                      'Storage Type', _advice!['storage_type'] ?? 'N/A'),
                 ],
               ),
             ),

@@ -1,19 +1,17 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AppShell, { ErrorPanel } from '../../components/AppShell';
 import PageHeader from '../../components/PageHeader';
 import DataTable, { type Column } from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';
-import ConfirmDialog from '../../components/ConfirmDialog';
 import Pagination from '../../components/Pagination';
 import Icon from '../../components/Icon';
-import { useToast } from '../../components/Toast';
 import { adminRequest, useAsyncData } from '../../hooks/useAdminData';
+import SimulationDetails from './SimulationDetails';
 import {
   escrowTone,
   formatCurrency,
-  formatDate,
   formatDateTime,
   formatNumber,
   orDash,
@@ -36,6 +34,8 @@ interface EscrowTransaction {
   checkout_status: string;
   checkout_expires_at: string | null;
   reconciliation_reason: string | null;
+  delivery_statuses?: string[];
+  has_dispute?: boolean;
 }
 
 const PAGE_SIZE = 10;
@@ -50,6 +50,12 @@ const STATUS_OPTIONS = [
   'reconciliation_required',
   'expired',
   'cancelled',
+  'simulated_paid',
+  'fulfilling',
+  'partially_completed',
+  'awaiting_fulfillment',
+  'ready',
+  'delivered',
 ];
 
 interface TransactionData {
@@ -65,7 +71,6 @@ const loadTransactions = async (): Promise<TransactionData> => {
 };
 
 export default function TransactionsPage() {
-  const { notify } = useToast();
   const { data, error, loading, initialLoading, reload } = useAsyncData<TransactionData>(
     loadTransactions,
     []
@@ -74,11 +79,18 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
-  const [resolution, setResolution] = useState<{
-    transaction: EscrowTransaction;
-    outcome: 'released' | 'refunded';
-  } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const investigationRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!selectedId) return;
+    investigationRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    investigationRef.current?.focus({ preventScroll: true });
+  }, [selectedId]);
+  const closeInvestigation = () => {
+    setSelectedId(null);
+    requestAnimationFrame(() => { if (openerRef.current?.isConnected) openerRef.current.focus(); });
+  };
 
   const transactions = useMemo(() => data?.transactions ?? [], [data]);
 
@@ -86,7 +98,7 @@ export default function TransactionsPage() {
     const query = search.trim().toLowerCase();
 
     return transactions.filter((transaction) => {
-      const matchesStatus = status === 'all' || transaction.escrow_status === status || transaction.checkout_status === status;
+      const matchesStatus = status === 'all' || transaction.escrow_status === status || transaction.checkout_status === status || transaction.payment_status === status || transaction.delivery_statuses?.includes(status) || (status === 'disputed' && transaction.has_dispute);
       if (!matchesStatus) return false;
       if (!query) return true;
 
@@ -108,36 +120,6 @@ export default function TransactionsPage() {
   );
 
   const totals = data?.summary ?? {all: '0.00', locked: '0.00', disputed: 0};
-
-  const confirmResolution = useCallback(async () => {
-    if (!resolution) return;
-    setSubmitting(true);
-
-    try {
-      await adminRequest(`/api/admin/transactions/${resolution.transaction.transaction_id}/resolve`, {
-        method: 'POST',
-        data: { status: resolution.outcome },
-      });
-
-      notify({
-        tone: 'success',
-        title: 'Prototype ledger updated',
-        message: 'No real payout or provider refund was performed.',
-      });
-
-      setResolution(null);
-      await reload();
-    } catch (err: any) {
-      notify({
-        tone: 'danger',
-        title: 'Could not update escrow',
-        message: err?.response?.data?.error || 'The backend rejected the request.',
-      });
-      setResolution(null);
-    } finally {
-      setSubmitting(false);
-    }
-  }, [resolution, notify, reload]);
 
   const columns: Column<EscrowTransaction>[] = [
     {
@@ -213,38 +195,14 @@ export default function TransactionsPage() {
       header: 'Actions',
       className: 'table__cell--actions',
       render: (transaction) => {
-        const isOpen = ['locked', 'pending', 'disputed'].includes(
-          String(transaction.escrow_status).toLowerCase()
-        );
-        if (!isOpen) {
-          return (
-            <span className="table__cell--muted" style={{ fontSize: 'var(--text-xs)' }}>
-              Closed
-            </span>
-          );
-        }
-        if (transaction.checkout_status === 'reconciliation_required') return <span>Verification required — stock retained</span>;
-        return (
-          <span className="table__actions">
-            <button
-              type="button"
-              className="btn btn--success-soft btn--sm"
-              disabled={transaction.payment_status !== 'confirmed'}
-              onClick={() => setResolution({ transaction, outcome: 'released' })}
-            >
-              <Icon name="check" size={15} />
-              Release
-            </button>
-            <button
-              type="button"
-              className="btn btn--danger-soft btn--sm"
-              onClick={() => setResolution({ transaction, outcome: 'refunded' })}
-            >
-              <Icon name="arrow-left" size={15} />
-              Refund
-            </button>
-          </span>
-        );
+        return <button className="btn btn--ghost btn--sm" onClick={event => {
+          openerRef.current = event.currentTarget;
+          setSelectedId(transaction.transaction_id);
+          if (selectedId === transaction.transaction_id) {
+            investigationRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+            investigationRef.current?.focus({ preventScroll: true });
+          }
+        }}><Icon name="shield-check" size={15} />{transaction.has_dispute ? 'Review dispute' : 'Investigate allocations'}</button>;
       },
     },
   ];
@@ -271,6 +229,7 @@ export default function TransactionsPage() {
         title="Escrow transactions"
         description="Prototype checkout and inventory-ledger monitoring. Pending checkouts are not funded escrow. No real payout or provider refund is performed by these actions."
       />
+      {selectedId && <div ref={investigationRef} tabIndex={-1} aria-label="Transaction dispute investigation" style={{ scrollMarginTop: 90 }}><SimulationDetails key={selectedId} id={selectedId} onClose={closeInvestigation} onChanged={reload} /></div>}
 
       {error ? (
         <ErrorPanel message={error} onRetry={reload} />
@@ -406,32 +365,6 @@ export default function TransactionsPage() {
         </>
       )}
 
-      <ConfirmDialog
-        open={resolution !== null}
-        variant={resolution?.outcome === 'refunded' ? 'danger' : 'default'}
-        busy={submitting}
-        title={
-          resolution?.outcome === 'refunded' ? 'Refund the buyer?' : 'Release funds to the farmer?'
-        }
-        message={
-          resolution
-            ? resolution.outcome === 'refunded'
-              ? `${formatCurrency(resolution.transaction.amount)} will be returned to ${resolution.transaction.buyer_phone || 'the buyer'}. This cannot be undone.`
-              : `${formatCurrency(resolution.transaction.amount)} will be paid out to ${resolution.transaction.farmer_phone || 'the farmer'}. This cannot be undone.`
-            : ''
-        }
-        confirmLabel={
-          submitting
-            ? 'Updating…'
-            : resolution?.outcome === 'refunded'
-              ? 'Refund buyer'
-              : 'Release funds'
-        }
-        onConfirm={confirmResolution}
-        onCancel={() => {
-          if (!submitting) setResolution(null);
-        }}
-      />
     </AppShell>
   );
 }

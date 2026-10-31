@@ -79,10 +79,10 @@ class OtpInputFieldState extends State<OtpInputField> {
   @override
   Widget build(BuildContext context) {
     final hasFocus = _focusNode.hasFocus;
-    final focusedIndex = hasFocus ? _code.length.clamp(0, widget.length - 1) : -1;
-    final borderColor = widget.hasError
-        ? Colors.red.shade700
-        : const Color(0xFF2E7D32);
+    final focusedIndex =
+        hasFocus ? _code.length.clamp(0, widget.length - 1) : -1;
+    final borderColor =
+        widget.hasError ? Colors.red.shade700 : const Color(0xFF2E7D32);
 
     return Semantics(
       label: 'One-time password',
@@ -98,8 +98,7 @@ class OtpInputFieldState extends State<OtpInputField> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: List.generate(widget.length, (index) {
-                  final digit =
-                      index < _code.length ? _code[index] : '';
+                  final digit = index < _code.length ? _code[index] : '';
                   final isFocused = index == focusedIndex;
 
                   return AnimatedContainer(

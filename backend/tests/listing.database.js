@@ -20,6 +20,10 @@ const pool = require('../src/config/db');
     if(!deboInstalled) await db.query(fs.readFileSync(require.resolve('../db/migrations/006_digital_debo.sql'),'utf8'));
     if(!(await db.query("SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='transactions' AND policyname='transactions_read_secure'")).rowCount) await db.query(fs.readFileSync(require.resolve('../db/migrations/007_debo_transaction_security.sql'),'utf8'));
     if(!(await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name='checkout_status'")).rowCount) await db.query(fs.readFileSync(require.resolve('../db/migrations/008_debo_stabilization.sql'),'utf8'));
+    if(!(await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='transactions' AND column_name='simulation_version'")).rowCount) {
+      // Preserve this test's OUTER rollback; 009's normal deployment is atomic.
+      await db.query(fs.readFileSync(require.resolve('../db/migrations/009_simulated_transactions.sql'),'utf8').replace(/^BEGIN;$/gm,'').replace(/^COMMIT;$/gm,''));
+    }
     check(true, installed ? 'applied migration detected; testing installed schema' : 'additive migration executes against actual schema');
     const fixtures = [];
     for (const role of ['farmer','farmer','buyer','admin']) {
@@ -73,12 +77,18 @@ const pool = require('../src/config/db');
     const t = require('../src/modules/transactionsEscrow/transaction.service');
     const sellable = await s.createListing({...payload,client_id:randomUUID()},farmer);
     const transaction = await t.createTransaction({listing_id:sellable.listing_id,buyer_id:fixtures[2],farmer_id:fixtures[1],amount:1,payment_method:'telebirr'});
-    check(transaction.amount==='10000.00' && (await s.getListing(sellable.listing_id)).status==='reserved','purchase derives amount/owner and reserves listing');
-    await assert.rejects(t.createTransaction({listing_id:sellable.listing_id,buyer_id:fixtures[2],payment_method:'telebirr'}),{status:409}); checks++; console.log('PASS overselling blocked');
+    check(transaction.amount==='10000.00' && Number((await s.getListing(sellable.listing_id)).available_quantity)===0,'purchase derives amount/owner and reserves quantity through shared ledger');
+    check((await t.createTransaction({listing_id:sellable.listing_id,buyer_id:fixtures[2],payment_method:'telebirr'})).transaction_id===transaction.transaction_id,'legacy checkout retry reuses existing reservation');
+    await assert.rejects(t.createTransaction({listing_id:sellable.listing_id,quantity:'6',buyer_id:fixtures[2],payment_method:'telebirr'}),{status:409}); checks++; console.log('PASS conflicting duplicate/overselling blocked');
     await assert.rejects(t.releaseEscrow(transaction.transaction_id),{status:409});
-    // Trusted test evidence only: no public callback can set this state.
-    await db.query("UPDATE transactions SET payment_status='confirmed' WHERE transaction_id=$1",[transaction.transaction_id]);
-    await t.releaseEscrow(transaction.transaction_id);
+    process.env.NODE_ENV='test';process.env.SIMULATED_PAYMENTS_ENABLED='true';
+    const simulation=require('../src/modules/transactionsEscrow/simulation.service');
+    await simulation.pay(transaction.transaction_id,fixtures[2],{method:'telebirr'});
+    const allocation=(await db.query('SELECT allocation_id FROM transaction_allocations WHERE transaction_id=$1',[transaction.transaction_id])).rows[0].allocation_id;
+    await simulation.ready(transaction.transaction_id,allocation,farmer);
+    const qr=await simulation.issueQr(transaction.transaction_id,allocation,farmer);
+    await simulation.verifyQr(transaction.transaction_id,allocation,fixtures[2],{qr_token:qr.qr_token,confirm_delivery:true});
+    await simulation.settle(transaction.transaction_id,allocation,farmer);
     check((await s.getListing(sellable.listing_id)).status==='sold','escrow fulfillment marks produce sold');
 
     // Real routes, validation, RBAC, controllers and PostgreSQL. Only token

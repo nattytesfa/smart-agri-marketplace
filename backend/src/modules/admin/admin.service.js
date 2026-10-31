@@ -54,11 +54,14 @@ const getAllTransactions = async () => {
            t.transaction_hash,
            u1.phone_number as buyer_phone,
            u2.phone_number as farmer_phone,
-           l.crop_type
+           coalesce(l.crop_type,b.crop_type) AS crop_type,
+           ARRAY(SELECT DISTINCT a.delivery_status FROM transaction_allocations a WHERE a.transaction_id=t.transaction_id) AS delivery_statuses,
+           EXISTS(SELECT 1 FROM transaction_allocations a WHERE a.transaction_id=t.transaction_id AND a.dispute_status IN ('open','under_review')) AS has_dispute
     FROM transactions t
     JOIN users u1 ON t.buyer_id = u1.user_id
-    JOIN users u2 ON t.farmer_id = u2.user_id
+    LEFT JOIN users u2 ON t.farmer_id = u2.user_id
     LEFT JOIN produce_listings l ON t.listing_id = l.listing_id
+    LEFT JOIN digital_debo_batches b ON t.batch_id=b.batch_id
     ORDER BY t.created_at DESC
   `;
   const result = await pool.query(query);
@@ -73,8 +76,8 @@ const resolveDispute = async (transactionId, status) => {
 const getTransactionSummary = async () => {
   await require('../transactionsEscrow/transaction.service').recoverCheckouts();
   return (await pool.query(`SELECT round(coalesce(sum(amount),0),2)::text AS all,
-    round(coalesce(sum(amount) FILTER (WHERE escrow_status='locked' AND payment_status='confirmed'),0),2)::text AS locked,
-    count(*) FILTER (WHERE escrow_status::text='disputed')::int AS disputed FROM transactions`)).rows[0];
+    (SELECT (coalesce(sum(CASE WHEN event_type='hold' THEN amount_minor ELSE -amount_minor END),0)/100.0)::numeric(20,2)::text FROM simulated_escrow_ledger) AS locked,
+    (SELECT count(*)::int FROM transaction_disputes WHERE status IN ('open','under_review')) AS disputed FROM transactions`)).rows[0];
 };
 
 // Get heatmap data (PostGIS aggregation)

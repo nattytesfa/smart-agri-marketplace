@@ -6,6 +6,7 @@ import '../core/config/env_config.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/models/registration_draft.dart';
+import '../features/auth/presentation/screens/fayda_verification_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   final String phone;
@@ -150,6 +151,31 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
               const Text(
                 'How will you use the platform?',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FaydaVerificationScreen(
+                          phone: widget.phone,
+                          registrationData:
+                              widget.draft?.toRegisterBody(widget.phone) ?? {},
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.verified_user),
+                  label: const Text('Verify with Fayda (Optional)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
 

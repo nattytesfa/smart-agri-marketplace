@@ -20,6 +20,9 @@ const register = async (req, res, next) => {
     if (!supabaseUser) {
       return res.status(401).json({ error: 'Unauthorized – no user found' });
     }
+    if (req.account) {
+      return res.status(409).json({error:'This authenticated identity already has an application account. Sign in instead of registering another role.'});
+    }
 
     const {
     phone_number,
@@ -45,7 +48,7 @@ const register = async (req, res, next) => {
       return res.status(409).json({ error: 'User with this phone already registered' });
     }
 
-    const userId = supabaseUser.id;
+    const userId = req.authUser?.id || supabaseUser.id;
 
     // Insert user
     await userService.createUser(userId, phone_number, fayda_id, role, 'supabase-managed', {
@@ -84,12 +87,13 @@ const getMe = async (req, res, next) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const user = await userService.getUserById(supabaseUser.id, supabaseUser);
+    const user = await userService.getUserById(supabaseUser.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found in local database' });
     }
 
-    res.status(200).json(user);
+    res.set('Cache-Control','no-store');
+    res.status(200).json({...user, auth_user_id: req.authUser?.id || supabaseUser.id});
   } catch (error) {
     logger.error('GetMe error:', error);
     next(error);

@@ -1,6 +1,5 @@
 const pool = require('../../config/db');
-const { randomUUID, createHash } = require('crypto');
-const money = require('../../utils/money');
+const { createHash } = require('crypto');
 const fail = (status,message) => Object.assign(new Error(message),{status});
 const withTransaction = async action => {
   const db=await pool.connect();
@@ -13,76 +12,6 @@ const pendingTimeoutSeconds = () => {
   return seconds;
 };
 const recoverCheckouts = async () => (await pool.query('SELECT public.recover_expired_checkouts() AS recovered')).rows[0].recovered;
-
-// Create a new transaction with escrow locked
-const createTransaction = async (data) => {
-  let {
-    listing_id,
-    batch_id,
-    buyer_id,
-    farmer_id,
-    amount,
-    payment_method,
-  } = data;
-
-  const db = await pool.connect();
-  try {
-    await db.query('BEGIN');
-    if (listing_id && batch_id) throw Object.assign(new Error('Choose a listing or a batch, not both'), { status: 400 });
-    if (listing_id) {
-      const l = (await db.query('SELECT * FROM produce_listings WHERE listing_id=$1 FOR UPDATE', [listing_id])).rows[0];
-      if (!l || l.deleted_at || l.status !== 'available' || l.farmer_id === buyer_id) throw Object.assign(new Error('Listing is no longer available'), { status: 409 });
-      if ((await db.query("SELECT 1 FROM debo_batch_listings WHERE listing_id=$1 AND reservation_status IN ('active','fulfilled')",[listing_id])).rowCount) throw Object.assign(new Error('Listing has Digital Debo commitments. Use the aggregation workflow.'),{status:409});
-      farmer_id = l.farmer_id;
-      amount = money.formatMinor(money.lineMinor(l.quantity,l.price_per_unit));
-      await db.query("UPDATE produce_listings SET status='reserved',version=version+1,updated_at=now() WHERE listing_id=$1", [listing_id]);
-    } else if (batch_id) {
-      const batch = (await db.query('SELECT * FROM digital_debo_batches WHERE batch_id=$1 FOR UPDATE', [batch_id])).rows[0];
-      const existing = await db.query('SELECT 1 FROM transactions WHERE batch_id=$1', [batch_id]);
-      const members = (await db.query(`SELECT l.*,d.confirmed_quantity,d.unit_price,round(d.confirmed_quantity*d.unit_price,2) AS subtotal FROM produce_listings l JOIN debo_batch_listings d ON d.listing_id=l.listing_id
-        WHERE d.batch_id=$1 AND d.reservation_status='active' ORDER BY l.listing_id FOR UPDATE OF l`, [batch_id])).rows;
-      if (!batch || batch.status!=='filled' || !batch.criteria || new Date(batch.expires_at)<=new Date() || batch.target_buyer_id !== buyer_id || existing.rows.length || !members.length || members.some(l => l.deleted_at || l.status !== 'available' || !money.sameDecimal(l.price_per_unit,l.unit_price))) {
-        throw Object.assign(new Error('Batch unavailable or already paid'), { status: 409 });
-      }
-      const full=(await db.query(`SELECT coalesce(sum(confirmed_quantity*conversion_factor),0)>=$2::numeric AS full
-        FROM debo_batch_listings WHERE batch_id=$1 AND reservation_status='active'`,[batch_id,batch.total_quantity])).rows[0].full;
-      if (!full) throw Object.assign(new Error('Batch reservations no longer meet the target'),{status:409});
-      if (new Set(members.map(l=>l.farmer_id)).size>1) throw Object.assign(new Error('Batch is ready for transaction review. Multi-farmer payout is not supported by the current single-payee escrow integration.'),{status:409});
-      amount = money.sumMoney(members.map(l=>l.subtotal));
-      farmer_id = members[0].farmer_id;
-    }
-
-  const cents=money.lineMinor(1,amount);
-  if (cents<1n || cents>999999999999n) throw fail(400,'Transaction amount must be between ETB 0.01 and 9999999999.99');
-  const query = `
-    INSERT INTO transactions (
-      listing_id, batch_id, buyer_id, farmer_id, 
-      amount, escrow_status, payment_method, transaction_hash,
-      payment_status,payment_mode,checkout_status,checkout_expires_at,pricing_policy
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8,'pending','prototype','pending',now()+($9::integer*interval '1 second'),$10)
-    RETURNING transaction_id, created_at,checkout_expires_at,payment_status,payment_mode,checkout_status
-  `;
-
-  const transactionHash = `PROTOTYPE_${randomUUID()}`;
-
-  const values = [
-    listing_id || null,
-    batch_id || null,
-    buyer_id,
-    farmer_id,
-    amount,
-    'locked',
-    payment_method,
-    transactionHash,
-    pendingTimeoutSeconds(),
-    money.policy,
-  ];
-
-  const result = await db.query(query, values);
-  await db.query('COMMIT');
-  return { ...result.rows[0], amount };
-  } catch (e) { await db.query('ROLLBACK'); throw e; } finally { db.release(); }
-};
 
 // Update transaction after successful payment
 const confirmPayment = async () => {throw fail(503,'Verified payment processing is not configured');};
@@ -97,6 +26,7 @@ const updateEscrowStatus = async (transactionId, status) => {
 const settleBatch = async (id,status) => {
   return withTransaction(async db => {
     const t=(await db.query('SELECT * FROM transactions WHERE transaction_id=$1 FOR UPDATE',[id])).rows[0];
+    if (t?.simulation_version) throw fail(409,'Use allocation-level delivery, settlement and dispute resolution');
     if (!t || t.escrow_status!=='locked') return null;
     if (['expired','cancelled'].includes(t.checkout_status)) throw fail(409,'Checkout is closed; payment requires reconciliation');
     if (status==='released' && t.payment_status!=='confirmed') throw fail(409,'Payment has not been verified; simulated payment cannot release escrow');
@@ -130,6 +60,8 @@ const changeInventory = async (db,t,fulfilled) => {
 };
 
 const cancelCheckout = async (id,buyerId) => {
+  const mode=(await pool.query('SELECT simulation_version FROM transactions WHERE transaction_id=$1',[id])).rows[0];
+  if (mode?.simulation_version==='v1') return require('./simulation.service').cancel(id,buyerId);
   const result=await withTransaction(async db => {
     const t=(await db.query('SELECT * FROM transactions WHERE transaction_id=$1 FOR UPDATE',[id])).rows[0];
     if (!t || t.buyer_id!==buyerId) throw fail(404,'Checkout not found');
@@ -202,31 +134,19 @@ const getUserTransactions = async (userId, role) => {
   return result.rows;
 };
 
-// Generate QR token for a transaction
-const generateQrToken = async (transactionId) => {
-  const token = `QR_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-  const query = `
-    UPDATE transactions 
-    SET qr_token = $2
-    WHERE transaction_id = $1
-    RETURNING qr_token
-  `;
-  const result = await pool.query(query, [transactionId, token]);
-  return result.rows[0]?.qr_token || null;
-};
 
-// Release escrow funds (called after QR scan)
+// Historical trusted settlement compatibility only. New HTTP delivery/settlement
+// is allocation-aware, and simulation-version checkouts are rejected here.
 const releaseEscrow = async (transactionId) => {
   return updateEscrowStatus(transactionId, 'released');
 };
 
 module.exports = {
-  createTransaction,
+  createTransaction: data => require('./simulation.service').create(data),
   confirmPayment,
   updateEscrowStatus,
   getTransaction,
   getUserTransactions,
-  generateQrToken,
   releaseEscrow,
   recoverCheckouts,
   cancelCheckout,

@@ -34,6 +34,12 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
   }
   await pool.query(fs.readFileSync(require.resolve('../db/migrations/007_debo_transaction_security.sql'),'utf8'));
   await pool.query(fs.readFileSync(require.resolve('../db/migrations/008_debo_stabilization.sql'),'utf8').replaceAll(/\bpublic\b/g,schema));
+  let nine=fs.readFileSync(require.resolve('../db/migrations/009_simulated_transactions.sql'),'utf8').replaceAll(/\bpublic\b/g,schema);
+  if ((await pool.query("SELECT 1 FROM information_schema.columns WHERE table_schema=$1 AND table_name='transactions' AND column_name='simulation_version'",[schema])).rowCount) {
+    nine='BEGIN;\n'+nine.slice(nine.indexOf('ALTER TABLE transactions DROP CONSTRAINT transactions_payment_status_check;'));
+    nine=nine.replace(/CREATE UNIQUE INDEX one_simulation_checkout_per_batch[\s\S]*?WHERE simulation_version='v1';/, '');
+  }
+  await pool.query(nine);
   // Services explicitly qualify the ledger helper to public; rewrite only that
   // reference on the test pool so every operation stays inside the test schema.
   const localQuery=(db)=>(sql,args)=>db.query(sql.replaceAll('public.debo_available',`${schema}.debo_available`).replaceAll('public.recover_expired_checkouts',`${schema}.recover_expired_checkouts`),args);
@@ -42,6 +48,14 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
   const s=require('../src/modules/digitalDebo/debo.service');
   const listings=require('../src/modules/listings/listing.service');
   const transactions=require('../src/modules/transactionsEscrow/transaction.service');
+  // Historical trusted-provider fixtures exercise the unchanged 006–008 recovery
+  // and settlement contracts. New simulation flows are covered separately.
+  const legacyCheckout=async data=>{
+    const members=(await pool.query(`SELECT l.farmer_id,d.confirmed_quantity,d.unit_price FROM debo_batch_listings d JOIN produce_listings l USING(listing_id) WHERE batch_id=$1 AND reservation_status='active'`,[data.batch_id])).rows;
+    const amount=require('../src/utils/money').sumMoney(members.map(l=>require('../src/utils/money').formatMinor(require('../src/utils/money').lineMinor(l.confirmed_quantity,l.unit_price))));
+    return (await pool.query(`INSERT INTO transactions(batch_id,buyer_id,farmer_id,amount,escrow_status,payment_method,payment_mode,payment_status,checkout_status,checkout_expires_at,pricing_policy)
+      VALUES($1,$2,$3,$4,'locked','telebirr','prototype','pending','pending',now()+($5::int*interval '1 second'),'ETB_HALF_UP_LINE_V1') RETURNING *`,[data.batch_id,data.buyer_id,members[0].farmer_id,amount,transactions.pendingTimeoutSeconds()])).rows[0];
+  };
   const users=[];
   for(const role of ['farmer','farmer','farmer','farmer','buyer','buyer','admin']) {
     const id=randomUUID();users.push(id);
@@ -81,7 +95,8 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
   await reject(listings.updateListing(la.listing_id,{...base,quantity:50,version:2,operation_id:randomUUID()},a),409,'farmers cannot edit committed listings');
   await reject(listings.deleteListing(la.listing_id,a,2),409,'committed listings cannot be deleted');
   await reject(transactions.createTransaction({listing_id:la.listing_id,buyer_id:buyer2,payment_method:'telebirr'}),409,'direct whole-listing purchase cannot consume Debo commitments');
-  await reject(transactions.createTransaction({batch_id:batch.batch_id,buyer_id:buyer,payment_method:'telebirr'}),409,'multi-payee transaction fails closed instead of paying first farmer');
+   const multi=await transactions.createTransaction({batch_id:batch.batch_id,buyer_id:buyer,payment_method:'telebirr'});
+   check(multi.farmer_id===null && multi.amount==='208500.00','multi-farmer checkout uses allocations rather than paying first farmer');
   await s.closeBatch(batch.batch_id,buyer);
   check(Number((await listings.getListing(la.listing_id)).available_quantity)===40,'cancellation releases confirmed reservation');
 
@@ -135,7 +150,7 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
   check((await s.getBatchDetails(unitBatch.batch_id,buyer)).reserved_quantity===0,'failed confirmation rolls back all contribution state');
   await pool.query('UPDATE produce_listings SET price_per_unit=20 WHERE listing_id=$1',[priced.listing_id]);
   await s.respond(unitBatch.batch_id,priced.listing_id,a,{action:'accepted',quantity:1000});
-  const tx=await transactions.createTransaction({batch_id:unitBatch.batch_id,buyer_id:buyer,amount:1,payment_method:'telebirr'});
+   const tx=await legacyCheckout({batch_id:unitBatch.batch_id,buyer_id:buyer});
   check(tx.amount==='20000.00','single-farmer batch transaction uses confirmed quantity and agreed price, not client amount');
   await reject(transactions.releaseEscrow(tx.transaction_id),409,'unverified prototype payment cannot fulfill produce');
   // Explicit trusted fixture: simulate verified settlement at the database layer,
@@ -152,7 +167,7 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
     // Trusted test evidence only. There is deliberately no HTTP shortcut for it.
     await pool.query("UPDATE transactions SET payment_status='confirmed' WHERE transaction_id=$1",[txId]);
   };
-  const checkout = (batchId,who=buyer) => transactions.createTransaction({batch_id:batchId,buyer_id:who,payment_method:'telebirr'});
+   const checkout = (batchId,who=buyer) => legacyCheckout({batch_id:batchId,buyer_id:who});
   const reserve = async (crop,q,who=buyer) => {
     const batch=await s.createBatch(who,req({crop_type:crop,target_quantity:q}));
     await s.respond(batch.batch_id,batch.listings[0].listing_id,a,{action:'accepted',quantity:q});return batch;
@@ -300,7 +315,7 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
   const webhook=await http(app).post('/api/transactions/webhooks/telebirr').send({transaction_id:tx.transaction_id,status:'completed'});
   check(webhook.status===503,'unsigned payment webhook cannot confirm a Debo batch payment');
   const nullQr=await http(app).post(`/api/transactions/${tx.transaction_id}/release`).set('Authorization',`Bearer ${buyer}`).send({qr_token:null});
-  check(nullQr.status===400,'null QR token cannot be used as delivery proof');
+   check(nullQr.status===410,'legacy reusable QR endpoint is disabled, including null tokens');
   const httpCancel=await http(app).post(`/api/transactions/${timeoutTx.transaction_id}/cancel`).set('Authorization',`Bearer ${buyer}`);
   check(httpCancel.status===200 && httpCancel.body.checkout_status==='cancelled' && Number((await listings.getListing(timeoutListing.listing_id)).available_quantity)===1,'real authenticated checkout cancellation route releases prototype stock');
   // The migration-created ACLs prohibit bypassing the reservation API.

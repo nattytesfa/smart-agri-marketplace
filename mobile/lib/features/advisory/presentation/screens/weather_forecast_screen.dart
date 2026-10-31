@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/config/env_config.dart';
@@ -109,7 +108,8 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
                                   flex: 2,
                                   child: Text(
                                     day['date'] ?? 'N/A',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
                                   ),
                                 ),
                                 // Temp
@@ -124,15 +124,20 @@ class _WeatherForecastScreenState extends State<WeatherForecastScreen> {
                                   flex: 2,
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.water_drop, size: 16, color: Colors.blue),
+                                      const Icon(Icons.water_drop,
+                                          size: 16, color: Colors.blue),
                                       Text('${day['rain_prob']}%'),
                                     ],
                                   ),
                                 ),
                                 // Icon
                                 Icon(
-                                  day['rain_prob'] > 50 ? Icons.umbrella : Icons.wb_sunny,
-                                  color: day['rain_prob'] > 50 ? Colors.blue : Colors.orange,
+                                  day['rain_prob'] > 50
+                                      ? Icons.umbrella
+                                      : Icons.wb_sunny,
+                                  color: day['rain_prob'] > 50
+                                      ? Colors.blue
+                                      : Colors.orange,
                                 ),
                               ],
                             ),
