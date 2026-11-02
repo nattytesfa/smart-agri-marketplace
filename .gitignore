@@ -31,6 +31,7 @@ Thumbs.db
 */.packages
 */build/
 */android/build/
+*/android/.kotlin/
 */.flutter-plugins
 */.flutter-plugins-dependencies
 */.pub-cache/
@@ -78,3 +79,10 @@ lib-cov/
 # Local OIDC scratch harness and ad-hoc scripts
 oidc-test-app/
 test_script.dart
+
+# Vendor archives may contain embedded demonstration secrets. Never commit them.
+mobile/lib/ET_DEMO_NODE.zip
+mobile/lib/SignTool.zip
+mobile/lib/EthiopiaPaySdkModule-uat-release.aar
+*.pem
+*.key

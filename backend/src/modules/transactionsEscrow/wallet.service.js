@@ -28,28 +28,41 @@ const account = async (db, owner, expected) => {
   return (await db.query('SELECT * FROM demo_wallet_accounts WHERE owner_id=$1 FOR UPDATE', [owner])).rows[0];
 };
 const balance = async (db, wid) => BigInt((await db.query('SELECT coalesce(sum(amount_minor),0)::text AS amount FROM demo_wallet_entries WHERE wallet_id=$1', [wid])).rows[0].amount);
+const uatAvailable = () => {
+  // Preserve the independent UAT capability gates. Disabled UAT never reads
+  // merchant configuration, and simulation never supplies UAT readiness/proof.
+  if (process.env.TELEBIRR_UAT_ENABLED !== 'true' || process.env.TELEBIRR_UAT_SDK_ENABLED !== 'true') return false;
+  try {
+    const c = require('../telebirrUat/service').capabilities();
+    return c.preorder_enabled === true && c.sdk_launch_enabled === true;
+  } catch (_) { return false; }
+};
 const topUp = async (owner, input) => {
+  enabled();
+  if (String(input.idempotency_key).startsWith('telebirr-demo:')) throw fail(400, 'Reserved funding key');
+  return atomic(db => creditTopUp(db,owner,input));
+};
+// Shared authoritative credit path. Caller owns the database transaction.
+const creditTopUp = async (db, owner, input) => {
   enabled();
   const cents = amount(input.amount), idempotency = key(input.idempotency_key);
   if (input.confirm_demo !== true) throw fail(400, 'Explicit confirmation that funds are virtual is required');
   const max = amount(process.env.DEMO_WALLET_MAX_TOP_UP || '1000000.00');
   const cap = amount(process.env.DEMO_WALLET_MAX_BALANCE || '5000000.00');
   if (cents > max) throw fail(400, `Maximum demo top-up is ETB ${money.formatMinor(max)}`);
-  return atomic(async db => {
-    const w = await account(db, owner, 'buyer');
-    const old = (await db.query('SELECT * FROM demo_wallet_entries WHERE wallet_id=$1 AND idempotency_key=$2', [w.wallet_id,idempotency])).rows[0];
-    if (old && (old.event_type !== 'demo_top_up' || BigInt(old.amount_minor) !== cents)) throw fail(409, 'Idempotency key already used with different details');
-    let event = old;
-    if (!old) {
-      if ((await balance(db,w.wallet_id)) + cents > cap) throw fail(409, 'Demo balance limit reached');
-      const recent = (await db.query("SELECT count(*)::int AS count FROM demo_wallet_entries WHERE wallet_id=$1 AND event_type='demo_top_up' AND created_at>now()-interval '1 hour'", [w.wallet_id])).rows[0].count;
-      const limit = Number(process.env.DEMO_WALLET_TOP_UPS_PER_HOUR || '10');
-      if (!Number.isSafeInteger(limit) || limit < 1) throw fail(503, 'Invalid demo top-up rate configuration');
-      if (recent >= limit) throw fail(429, 'Demo top-up hourly limit reached');
-      event = (await db.query("INSERT INTO demo_wallet_entries(wallet_id,event_type,amount_minor,idempotency_key) VALUES($1,'demo_top_up',$2,$3) RETURNING *", [w.wallet_id,cents.toString(),idempotency])).rows[0];
-    }
-    return { simulated:true, reference:event.event_id, created_at:event.created_at, available:money.formatMinor(await balance(db,w.wallet_id)) };
-  });
+  const w = await account(db, owner, 'buyer');
+  const old = (await db.query('SELECT * FROM demo_wallet_entries WHERE wallet_id=$1 AND idempotency_key=$2', [w.wallet_id,idempotency])).rows[0];
+  if (old && (old.event_type !== 'demo_top_up' || BigInt(old.amount_minor) !== cents)) throw fail(409, 'Idempotency key already used with different details');
+  let event = old;
+  if (!old) {
+    if ((await balance(db,w.wallet_id)) + cents > cap) throw fail(409, 'Demo balance limit reached');
+    const recent = (await db.query("SELECT count(*)::int AS count FROM demo_wallet_entries WHERE wallet_id=$1 AND event_type='demo_top_up' AND created_at>now()-interval '1 hour'", [w.wallet_id])).rows[0].count;
+    const limit = Number(process.env.DEMO_WALLET_TOP_UPS_PER_HOUR || '10');
+    if (!Number.isSafeInteger(limit) || limit < 1) throw fail(503, 'Invalid demo top-up rate configuration');
+    if (recent >= limit) throw fail(429, 'Demo top-up hourly limit reached');
+    event = (await db.query("INSERT INTO demo_wallet_entries(wallet_id,event_type,amount_minor,idempotency_key) VALUES($1,'demo_top_up',$2,$3) RETURNING *", [w.wallet_id,cents.toString(),idempotency])).rows[0];
+  }
+  return { simulated:true, reference:event.event_id, created_at:event.created_at, available:money.formatMinor(await balance(db,w.wallet_id)) };
 };
 // Called within the existing payment transaction, never as a separate operation.
 const debit = async (db,t,input) => {
@@ -75,7 +88,7 @@ const summary = owner => atomic(async db => {
     WHERE ($2='buyer' AND t.buyer_id=$1) OR ($2='farmer' AND a.farmer_id=$1)
     GROUP BY a.allocation_id) x`,[owner,w.wallet_type])).rows[0];
   const pending = (await db.query("SELECT coalesce(sum(total_minor),0)::text AS amount FROM transactions WHERE buyer_id=$1 AND checkout_status='pending' AND payment_status='pending' AND checkout_expires_at>now()",[owner])).rows[0].amount;
-  return { ...w, simulated:true, top_up_enabled:process.env.DEMO_WALLETS_ENABLED==='true' && process.env.SIMULATED_PAYMENTS_ENABLED==='true' && ['test','demo','development'].includes(process.env.NODE_ENV),
+  return { ...w, simulated:true, telebirr_simulation_enabled:require('../telebirrSimulation/config').available(), telebirr_uat_enabled:uatAvailable(), top_up_enabled:process.env.DEMO_WALLETS_ENABLED==='true' && process.env.SIMULATED_PAYMENTS_ENABLED==='true' && ['test','demo','development'].includes(process.env.NODE_ENV),
     ...Object.fromEntries(Object.entries({...r,...e,pending_checkout:pending}).map(([k,v])=>[k,money.formatMinor(BigInt(v))])) };
 });
 const pagination = query => {
@@ -85,9 +98,18 @@ const pagination = query => {
 };
 const history = async (owner,query={}) => {
   const {limit,offset} = pagination(query);
+  const source = query.funding_source || 'all';
+  if (!['all','instant','telebirr-demo'].includes(source)) throw fail(400,'Invalid wallet funding source');
   return atomic(async db => {
     const w = await account(db,owner);
-    const rows = (await db.query('SELECT * FROM demo_wallet_entries WHERE wallet_id=$1 ORDER BY created_at DESC,event_id DESC LIMIT $2 OFFSET $3',[w.wallet_id,limit+1,offset])).rows;
+    const rows = (await db.query(`SELECT e.*,
+      CASE WHEN e.idempotency_key LIKE 'telebirr-demo:%' THEN substring(e.idempotency_key FROM 15) END AS simulation_payment_id,
+      CASE WHEN e.idempotency_key LIKE 'telebirr-demo:%' THEN 'DEMO-TB-'||substring(e.idempotency_key FROM 15) END AS simulation_reference,
+      CASE WHEN e.idempotency_key LIKE 'telebirr-demo:%' THEN 'Telebirr Demo Payment — Simulation' END AS funding_label
+      FROM demo_wallet_entries e
+      WHERE e.wallet_id=$1 AND ($4='all' OR (e.event_type='demo_top_up' AND
+        (($4='instant' AND e.idempotency_key NOT LIKE 'telebirr-demo:%') OR ($4='telebirr-demo' AND e.idempotency_key LIKE 'telebirr-demo:%'))))
+      ORDER BY e.created_at DESC,e.event_id DESC LIMIT $2 OFFSET $3`,[w.wallet_id,limit+1,offset,source])).rows;
     return { items:rows.slice(0,limit).map(e=>({...e,amount:money.formatMinor(BigInt(e.amount_minor)),status:'completed',simulated:true})),has_more:rows.length>limit,offset,limit };
   });
 };
@@ -122,4 +144,4 @@ const quote = (owner,id) => atomic(async db => {
   const available=await balance(db,w.wallet_id),total=BigInt(t.total_minor);
   return {simulated:true,available:money.formatMinor(available),total:money.formatMinor(total),remaining:money.formatMinor(available-total),additional_required:money.formatMinor(total>available?total-available:0n)};
 });
-module.exports = {enabled,amount,key,account,balance,topUp,debit,summary,history,admin,quote};
+module.exports = {enabled,amount,key,account,balance,topUp,creditTopUp,debit,summary,history,admin,quote};

@@ -4,20 +4,26 @@ import '../../../../data/remote/wallet_api.dart';
 import '../../../../data/remote/transactions_api.dart';
 import 'transaction_history_screen.dart';
 import 'escrow_status_screen.dart';
+import 'telebirr_funding_screen.dart';
+import 'telebirr_demo_screen.dart';
+import '../../../../data/remote/telebirr_demo_api.dart';
 import '../../../listings/presentation/widgets/marketplace_ui.dart';
 import '../widgets/finance_ui.dart';
 
 class WalletScreen extends StatefulWidget {
-  const WalletScreen({super.key, this.api});
+  const WalletScreen({super.key, this.api, this.demoApi});
   final WalletApi? api;
+  final TelebirrDemoApi? demoApi;
   @override
   State<WalletScreen> createState() => _WalletScreenState();
 }
 
 class _WalletScreenState extends State<WalletScreen> {
   late final _api = widget.api ?? WalletApi();
+  late final _demoApi = widget.demoApi ?? TelebirrDemoApi();
   Map<String, dynamic>? _summary;
   final List<Map<String, dynamic>> _history = [];
+  List<Map<String, dynamic>> _demoPayments = [];
   bool _busy = false, _more = false;
   String? _error, _retryAmount, _retryKey;
   @override
@@ -34,9 +40,13 @@ class _WalletScreenState extends State<WalletScreen> {
     try {
       final summary = await _api.summary();
       final history = await _api.history(next ? _history.length : 0);
+      final demos = summary['telebirr_simulation_enabled'] == true
+          ? await _demoApi.history()
+          : <Map<String, dynamic>>[];
       if (!mounted) return;
       setState(() {
         _summary = summary;
+        _demoPayments = demos;
         if (!next) _history.clear();
         _history.addAll(List<Map<String, dynamic>>.from(history['items']));
         _more = history['has_more'] == true;
@@ -133,6 +143,47 @@ class _WalletScreenState extends State<WalletScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _addFunds() async {
+    final method = await showModalBottomSheet<String>(
+        context: context,
+        builder: (context) => SafeArea(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const ListTile(
+                  title: Text('Add Funds'),
+                  subtitle:
+                      Text('Demo only — No real money will be transferred.')),
+              ListTile(
+                  title: const Text('Instant Demo Top-up'),
+                  onTap: () => Navigator.pop(context, 'instant')),
+              if (_summary?['telebirr_simulation_enabled'] == true)
+                ListTile(
+                    title: const Text('Telebirr Demo Payment'),
+                    subtitle: const Text('Internal simulated authorization'),
+                    onTap: () => Navigator.pop(context, 'simulation')),
+              ListTile(
+                  title: const Text('Telebirr UAT'),
+                  subtitle: const Text(
+                      'Unavailable until official safety gates are satisfied'),
+                  enabled: _summary?['telebirr_uat_enabled'] == true,
+                  onTap: _summary?['telebirr_uat_enabled'] == true
+                      ? () => Navigator.pop(context, 'uat')
+                      : null),
+            ])));
+    if (!mounted) return;
+    if (method == 'instant') {
+      await _topUp();
+      return;
+    }
+    if (method == null) return;
+    await Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => method == 'simulation'
+                ? TelebirrDemoScreen(api: _demoApi)
+                : const TelebirrFundingScreen()));
+    if (mounted) await _load();
   }
 
   @override
@@ -313,6 +364,23 @@ class _WalletScreenState extends State<WalletScreen> {
                             const FinanceSectionTitle('Wallet activity',
                                 subtitle:
                                     'An auditable record of every virtual credit and purchase.'),
+                            for (final p in _demoPayments.where(
+                                (p) => p['status'] != 'CREDITED'))
+                              ListTile(
+                                  title: const Text(
+                                      'Telebirr Demo Payment · Simulation'),
+                                  subtitle: Text(
+                                      '${p['amount']} ETB · ${p['status']}\n${p['reference']}\n${p['created_at']}'),
+                                  onTap: () => Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      TelebirrDemoScreen(
+                                                          payment: p,
+                                                          api: _demoApi)))
+                                          .then((_) {
+                                        if (mounted) _load();
+                                      })),
                             if (_history.isEmpty && !_busy)
                               const FinancePanel(
                                   padding: 0,
@@ -406,15 +474,27 @@ class _WalletScreenState extends State<WalletScreen> {
                     foregroundColor: const Color(0xFF164C36),
                     disabledBackgroundColor: const Color(0xFFCFD8CD),
                     disabledForegroundColor: const Color(0xFF536458)),
-                onPressed: _busy || s['top_up_enabled'] != true ? null : _topUp,
+                onPressed:
+                    _busy || s['top_up_enabled'] != true ? null : _addFunds,
                 icon: const Icon(Icons.add_rounded, size: 20),
-                label: const Text('Add Demo Funds')),
+                label: const Text('Add Funds')),
             if (s['top_up_enabled'] != true)
               const Padding(
                   padding: EdgeInsets.only(top: 10),
                   child: Text('Demo top-ups are disabled in this environment.',
                       style:
                           TextStyle(color: Color(0xFFD3E4D7), fontSize: 12))),
+            const SizedBox(height: 10),
+            if (s['telebirr_uat_enabled'] == true)
+              FilledButton.tonalIcon(
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const TelebirrFundingScreen())),
+                  icon: const Icon(Icons.science_outlined),
+                  label: const Text('Telebirr UAT Payment')),
           ],
         ]),
       );
@@ -431,7 +511,9 @@ class _WalletScreenState extends State<WalletScreen> {
     final timestamp = date == null
         ? e['created_at'].toString()
         : '${MaterialLocalizations.of(context).formatMediumDate(date)} · ${TimeOfDay.fromDateTime(date).format(context)}';
-    final reference = (e['transaction_id'] ?? e['event_id']).toString();
+    final reference =
+        (e['simulation_reference'] ?? e['transaction_id'] ?? e['event_id'])
+            .toString();
     return InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: e['transaction_id'] == null
@@ -463,7 +545,8 @@ class _WalletScreenState extends State<WalletScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                     Text(
-                        labels[e['event_type']] ??
+                        e['funding_label'] ??
+                            labels[e['event_type']] ??
                             financeLabel(e['event_type']),
                         style: const TextStyle(
                             color: marketInk,
@@ -474,8 +557,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         style:
                             const TextStyle(color: marketMuted, fontSize: 11)),
                     const SizedBox(height: 5),
-                    Text(
-                        'Ref. ${reference.length > 12 ? reference.substring(0, 12) : reference}',
+                    Text('Ref. $reference',
                         style:
                             const TextStyle(color: marketMuted, fontSize: 11)),
                     const SizedBox(height: 10),

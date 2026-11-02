@@ -16,7 +16,7 @@ const reject=async(p,status,message)=>{await assert.rejects(p,{status});check(tr
   for(const table of ['users','produce_listings','digital_debo_batches','debo_batch_listings','transactions']) {
     await original.query(`CREATE TABLE ${schema}.${table} (LIKE public.${table} INCLUDING ALL)`);
   }
-  pool=new Pool({connectionString:config.databaseUrl,ssl:{rejectUnauthorized:false},max:4,idleTimeoutMillis:0,
+  pool=new Pool({...require('../src/config/databaseTls').databaseOptions(config.databaseUrl),max:4,idleTimeoutMillis:0,
     keepAlive:true,connectionTimeoutMillis:30000,query_timeout:45000,
     statement_timeout:30000,lock_timeout:5000,options:`-c search_path=${schema},public`});
   const installed=(await pool.query("SELECT 1 FROM information_schema.columns WHERE table_schema=$1 AND table_name='debo_batch_listings' AND column_name='proposed_quantity'",[schema])).rowCount;

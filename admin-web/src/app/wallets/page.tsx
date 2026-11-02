@@ -10,9 +10,11 @@ import StatusBadge from '../../components/StatusBadge';
 import { adminRequest, useAsyncData } from '../../hooks/useAdminData';
 import { formatDateTime, initials, titleCase } from '../../lib/format';
 import styles from './wallets.module.css';
+import TelebirrUatMonitor from './TelebirrUatMonitor';
+import TelebirrDemoMonitor from './TelebirrDemoMonitor';
 
 interface Wallet { wallet_id: string; owner_id: string; full_name: string; wallet_type: string; available: string }
-interface Entry { event_id: string; event_type: string; amount: string; created_at: string; transaction_id: string | null; escrow_event_id: string | null }
+interface Entry { event_id: string; event_type: string; funding_label?: string; simulation_reference?: string; amount: string; created_at: string; transaction_id: string | null; escrow_event_id: string | null }
 interface Audit { items: Wallet[]; has_more: boolean; mismatches: { transaction_id: string; issue: string }[]; conservation: { sources: string; wallets: string; escrow: string; balanced: boolean } }
 interface History { items: Entry[]; has_more: boolean }
 interface Summary { available: string; held: string; pending: string; disputed: string; refunds: string; settlements: string }
@@ -39,13 +41,15 @@ function Pager({ offset, more, loading, noun, onChange }: { offset: number; more
 }
 
 export default function WalletsPage() {
+  const [paymentSource, setPaymentSource] = useState('wallets');
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Wallet | null>(null);
   const [historyOffset, setHistoryOffset] = useState(0);
+  const [fundingSource, setFundingSource] = useState('all');
   const activityRef = useRef<HTMLElement>(null);
   const owner = selected?.owner_id;
   const { data, error, loading, reload } = useAsyncData<Audit>(() => adminRequest(`/api/wallet/admin?offset=${offset}&limit=25`), [offset]);
-  const history = useAsyncData<History>(() => owner ? adminRequest(`/api/wallet/admin/${owner}/history?offset=${historyOffset}&limit=25`) : Promise.resolve({ items: [], has_more: false }), [owner, historyOffset]);
+  const history = useAsyncData<History>(() => owner ? adminRequest(`/api/wallet/admin/${owner}/history?offset=${historyOffset}&limit=25&funding_source=${fundingSource}`) : Promise.resolve({ items: [], has_more: false }), [owner, historyOffset, fundingSource]);
   const summary = useAsyncData<Summary | null>(() => owner ? adminRequest(`/api/wallet/admin/${owner}`) : Promise.resolve(null), [owner]);
   const healthy = data?.conservation.balanced && data.mismatches.length === 0;
   const refresh = () => { void reload(); void history.reload(); void summary.reload(); };
@@ -65,7 +69,7 @@ export default function WalletsPage() {
     { key: 'audit', header: 'Investigation', align: 'right', render: w => <button className={`btn btn--sm ${selected?.owner_id === w.owner_id ? 'btn--success-soft' : 'btn--ghost'}`} onClick={() => selectWallet(w)} aria-label={`View activity for ${w.full_name}`}>View activity <Icon name="arrow-up-right" size={15} /></button> },
   ];
   const entryColumns: Column<Entry>[] = [
-    { key: 'event_type', header: 'Activity', render: e => <div className={styles.event}><span className={`${styles.eventIcon} ${e.amount.startsWith('-') ? styles.debit : ''}`}><Icon name={e.amount.startsWith('-') ? 'arrow-up-right' : 'arrow-down-right'} size={17} /></span><div><strong>{eventLabels[e.event_type] ?? titleCase(e.event_type)}</strong><span className={styles.reference} title={e.event_id}>{e.event_id.slice(0, 12)}…</span></div></div> },
+    { key: 'event_type', header: 'Activity', render: e => <div className={styles.event}><span className={`${styles.eventIcon} ${e.amount.startsWith('-') ? styles.debit : ''}`}><Icon name={e.amount.startsWith('-') ? 'arrow-up-right' : 'arrow-down-right'} size={17} /></span><div><strong>{e.funding_label ?? eventLabels[e.event_type] ?? titleCase(e.event_type)}</strong><span className={styles.reference} title={e.event_id}>{e.simulation_reference ?? `${e.event_id.slice(0, 12)}…`}</span></div></div> },
     { key: 'amount', header: 'Virtual ETB', align: 'right', render: e => <span className={`${styles.tableAmount} ${!e.amount.startsWith('-') ? styles.credit : ''}`}>{amount(e.amount)}</span> },
     { key: 'created_at', header: 'Date & time', render: e => <span className={styles.date}>{formatDateTime(e.created_at)}</span> },
     { key: 'status', header: 'Status', render: () => <StatusBadge status="Completed" tone="success" /> },
@@ -104,9 +108,20 @@ export default function WalletsPage() {
       </div>
       {summary.data && !summary.loading && <div className={styles.accountTotals}><span>Held total <strong>ETB {amount(summary.data.held)}</strong></span><span>Refunds received <strong>ETB {amount(summary.data.refunds)}</strong></span><span>Settlements received <strong>ETB {amount(summary.data.settlements)}</strong></span></div>}
       <div className={styles.activityHeading}><h3>Wallet activity</h3><span><Icon name="lock" size={13} /> Immutable ledger</span></div>
+      <label>Funding filter <select value={fundingSource} onChange={e => { setFundingSource(e.target.value); setHistoryOffset(0); }}><option value="all">All wallet activity</option><option value="instant">Instant Demo top-ups</option><option value="telebirr-demo">Telebirr Demo credits only</option></select></label>
       {history.error && <ErrorPanel message={history.error} onRetry={history.reload} />}
       <DataTable columns={entryColumns} data={history.data?.items ?? []} keyExtractor={e => e.event_id} loading={history.loading} skeletonRows={4} emptyTitle="No wallet activity yet" emptyMessage="Top-ups, purchases, settlements and refunds will be recorded here." emptyIcon="inbox" caption={`Financial activity for ${selected.full_name}`} />
       <Pager offset={historyOffset} more={history.data?.has_more} loading={history.loading} noun="Activity" onChange={setHistoryOffset} />
     </section>}
+    <section className={styles.panel}>
+      <label>Payment source <select value={paymentSource} onChange={e => setPaymentSource(e.target.value)}>
+        <option value="wallets">Demo Wallet top-ups (wallet activity above)</option>
+        <option value="simulation">Telebirr simulated payments</option>
+        <option value="uat">Official Telebirr UAT attempts (separate, not demo funds)</option>
+      </select></label>
+      {paymentSource === 'wallets' && <p>Demo top-ups and their immutable credits are shown in each wallet&apos;s activity above. Simulation funding is labeled separately.</p>}
+    </section>
+    {paymentSource === 'simulation' && <TelebirrDemoMonitor />}
+    {paymentSource === 'uat' && <TelebirrUatMonitor />}
   </AppShell>;
 }

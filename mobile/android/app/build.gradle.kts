@@ -56,3 +56,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation(files("libs/EthiopiaPaySdkModule-uat-release.aar"))
+    // The inspected SDK pay() signature requires AndroidX FragmentActivity.
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
+}

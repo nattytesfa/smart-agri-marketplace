@@ -20,7 +20,12 @@
     "db:migrate:account-mapping": "node src/jobs/migrateAccountMapping.js",
     "test:checkout:live": "LIVE_AUTH_TEST=1 node tests/checkout.live.js",
     "checkouts:recover": "node src/jobs/recoverCheckouts.js",
-    "test:connectivity:live": "node tests/connectivity.live.js"
+    "test:connectivity:live": "node tests/connectivity.live.js",
+    "db:migrate:telebirr-uat": "node src/jobs/migrateTelebirrUat.js",
+    "telebirr:reconcile": "node src/jobs/reconcileTelebirrUat.js",
+    "test:telebirr:db": "node tests/telebirrUat.database.js",
+    "db:migrate:telebirr-demo": "node src/jobs/migrateTelebirrSimulation.js",
+    "test:telebirr-demo:db": "node tests/telebirrSimulation.database.js"
   },
   "keywords": [],
   "author": "",

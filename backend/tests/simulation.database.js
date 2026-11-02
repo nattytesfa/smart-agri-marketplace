@@ -15,7 +15,7 @@ const sqlFile = n => fs.readFileSync(require.resolve(`../db/migrations/${n}`), '
     await original.query(`CREATE SCHEMA ${schema}`);
     for (const table of ['users', 'produce_listings', 'digital_debo_batches', 'debo_batch_listings', 'transactions'])
       await original.query(`CREATE TABLE ${schema}.${table} (LIKE public.${table} INCLUDING ALL)`);
-    pool = new Pool({ connectionString: config.databaseUrl, ssl: { rejectUnauthorized: false }, max: 4, keepAlive:true, idleTimeoutMillis:0,
+    pool = new Pool({ ...require('../src/config/databaseTls').databaseOptions(config.databaseUrl), max: 4, keepAlive:true, idleTimeoutMillis:0,
       connectionTimeoutMillis: 30000, query_timeout:45000, statement_timeout: 30000, lock_timeout: 5000, options: `-c search_path=${schema},public` });
     const six = sqlFile('006_digital_debo.sql');
     for (const name of ['debo_guard_contribution', 'debo_available', 'debo_guard_listing']) {
@@ -50,6 +50,14 @@ const sqlFile = n => fs.readFileSync(require.resolve(`../db/migrations/${n}`), '
       await pool.query("INSERT INTO users(user_id,phone_number,role,hashed_password,full_name) VALUES($1,$2,$3,'test-only',$4)", [id, `test-${id}`, r, r]);
     }
     const [a, b, c, buyer, stranger, admin] = users;
+    if (process.env.TELEBIRR_DEMO_TEST === '1') {
+      for (const file of ['012_telebirr_uat_funding.sql','013_telebirr_uat_sdk_context.sql','014_telebirr_simulation.sql']) await pool.query(sqlFile(file));
+      const demoBuyer=randomUUID();
+      await pool.query("INSERT INTO users(user_id,phone_number,role,hashed_password,full_name) VALUES($1,$2,'buyer','test-only','Demo test buyer')",[demoBuyer,`test-${demoBuyer}`]);
+      const demoFarmer=randomUUID();
+      await pool.query("INSERT INTO users(user_id,phone_number,role,hashed_password,full_name) VALUES($1,$2,'farmer','test-only','Demo test farmer')",[demoFarmer,`test-${demoFarmer}`]);
+      await require('./telebirrSimulation.checks')(pool,{buyer:demoBuyer,farmer:demoFarmer,other:buyer},check);
+    }
     let wallet;
     if (process.env.WALLET_TEST === '1') {
       process.env.DEMO_WALLETS_ENABLED = 'true';

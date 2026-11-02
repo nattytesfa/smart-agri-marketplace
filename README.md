@@ -12,6 +12,11 @@ The platform combines:
 Full architecture, schema, and API reference:
 [docs/implementation_guide.md](./docs/implementation_guide.md)
 
+Official Telebirr InApp UAT setup, safety gates and actual verification results:
+[docs/telebirr_uat_blocker_resolution.md](./docs/telebirr_uat_blocker_resolution.md).
+SDK order mapping and verified TLS are implemented; authoritative payment
+confirmation remains safety-gated. UAT records never credit the Demo Wallet.
+
 ## Repository Layout
 
 ```text

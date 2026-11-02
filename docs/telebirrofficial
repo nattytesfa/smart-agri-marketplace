@@ -1,0 +1,719 @@
+Introduction
+InApp SDK Integration
+
+The InApp SDK Integration offered by telebirr serves as a payment integration option, empowering developers to seamlessly incorporate telebirr's payment functionality into their mobile applications.
+
+This integration allows users to make payments directly from their telebirr accounts within the app. By adopting telebirr's InApp SDK, developers enhance the user experience by providing a convenient and secure payment solution.
+
+InApp SDK Integration
+
+This document provides an integration guide for merchant websites to use the Digital Payment to perform in-app payment. It is applicable to in-app payment scenarios. Before developing an application, you need to understand the application scenario and call APIs as required.
+
+
+Development preparation
+Register an account.
+
+If a third-party system wants to access the payment system, the developer must register as an organization (merchant or distributor) in the system. When registering, you need to provide the following information: mobile phone number, abbreviation, full name, name and mobile phone number of the organization contact person, business scope of the organization, and merchant address. The above information is mandatory. Offline registration: The resident party provides necessary information to the platform party by email. After the registration is complete, the resident party will receive an email containing the information required for payment integration. Online registration: The registered party registers online through the Merchant portal. After the registration is approved, the registered party logs in to the Merchant platform to view related information or consults by email.
+Subscribe to products
+
+A developer can subscribe to a payment product before submitting an organization application. Once approved by the MMO, the organization can use the selected payment products.
+Exchange keys
+
+After registering as an organization in the payment system, the platform party will integrate the necessary information for payment. (Merchant App Id, Merchant Short Code, App Secret, and Fabric App Id) Send to the resident. The third-party system needs to generate two pairs of RSA public and private keys for the test environment and production environment. and sends the RSA public key to the platform. You can use the Linux shell command to generate the RSA public/private key pair, or download and use the 7.1 Signing tool to generate.  Generate the RSA private key. openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out private-key.pem  Generate the corresponding RSA public key. openssl pkey -in private-key.pem -out public-key.pem -pubout
+
+Keep your private key safe and do not share it with others.
+Interface Signing
+
+ Signature algorithm: SHA256withRSA
+
+ Fill mode: PSS
+
+ Parameters not involved in the signature: null parameters, sign, sign_type, and biz_content
+
+ rawRequest: Assume that the request parameter set is M (including the parameters under biz_content). First, exclude the parameters that are not involved in the signature, sort the remaining parameters in ascending order of ASCII codes of parameter names, and combine the parameters in the format of URL key-value pairs. key1=value1&key2=value2...) Obtain the original character string rawRequest.
+
+Pay special attention to the following important rules:
+
+− The parameter names are sorted by ASCII code in ascending order (lexicographic order).
+
+− If the value of a parameter is empty, the parameter is not involved in the signature.
+
+− Parameter names are case-sensitive.
+
+− Use the ampersand (&) symbol to connect parameters.
+
+Example of rawRequest for creating an order: "appid=1072905731584000&business_type=BuyGoods&merch_code=200001&merch_order_id=201907161732001&method=payment.preorder&nonce_str=fcab0d2949e64a69a212aa83eab6ee1d¬ify_url=http://test.payment.com/notify&redirect_url=http://test.payment.com/redirect&timeout_express=120m×tamp=1535166225&title=iphone1&total_amount=12&trade_type=Checkout&trans_currency=ETB&version=1.0"
+
+Example of rawRequest for querying an order: "appid=1072905731584000&merch_code=200001&merch_order_id=201907161732001&method=payment.queryorder&nonce_str=5K8264ILTKCH16CQ2502SI8ZNMTM67VS×tamp=1535166225&version=1.0"
+      
+
+    InApp SDK IntegrationStep 1: Apply Fabric Token
+
+Step 1: Apply Fabric Token
+
+In order to establish communication with the SuperApp API fabric, you must first get a fabric token. For this purpose, you need to apply for a fabric token using the applyFabricToken service.
+
+    Get Test bed X-APP-Key and appSecret
+    For Production X-APP-Key and appSecret information please contact the ET administrator
+
+Note: You are advised to integrate backend services and provide APIs for your frontend applications.
+1.1 API Information
+
+    BaseURL: https://developerportal.ethiotelebirr.et:38443/apiaccess/payment/gateway
+    BaseURL(Production): https://superapp.ethiomobilemoney.et:38443/apiaccess/payment/gateway
+    Endpoint: /payment/v1/token
+    Method: POST
+    Content-Type: application/json
+
+1.2 Request Parameters
+HEADER PARAMETERS
+Parameter	Data Type	M/O	Description
+X-APP-Key	String	M	Fabric App ID, provided by fabric portal of Ethio telecom (Get Test bed X-APP-Key and appSecret)
+REQUEST BODY SCHEMA
+Parameter	Data Type	M/O	Description
+appSecret	String	M	App Secret, provided by fabric portal of Ethio telecom (Get Test bed X-APP-Key and appSecret)
+
+Request Body Example Value:
+
+{
+  "appSecret": "851bdccee2f83622658a45e3ddc40188"
+}
+
+1.3 Response Parameters
+Parameter	Data Type	Description
+token	String	ApiFabric Token
+effectiveDate	String	Effective Date of App Token, the Format is yyyyMMddHHmmss
+expirationDate	String	Expiration Date of App Token, the Format is yyyyMMddHHmmss
+
+Response Example Value:
+
+{
+  "effectiveDate": "20221101132422",
+  "expirationDate": "20221101142422",
+  "token": "Bearer 94cc42be4412696d754508c06ca1db20"
+}
+
+1.4 Create apply token service
+
+Create a file at ..\service\config.js:
+..\service\config.js
+
+  module.exports = {
+    baseUrl: "https://xxx:38443/apiaccess/payment/gateway",
+    fabricAppId: "your X-APP-Key",
+    appSecret: "your appSecret",
+  };
+
+Create a file at ..\service\applyFabricTokenService.js:
+..\service\applyFabricTokenService.js
+
+const https = require("http");
+const config = require("../config/config");
+var request = require("request");
+
+function applyFabricToken() {
+  return new Promise((resolve, reject) => {
+    var options = {
+      method: "POST",
+      url: config.baseUrl + "/payment/v1/token",
+      headers: {
+        "Content-Type": "application/json",
+        "X-APP-Key": config.fabricAppId,
+      },
+      rejectUnauthorized: false, //add when working with https sites
+      requestCert: false, //add when working with https sites
+      agent: false, //add when working with https sites
+      body: JSON.stringify({
+        appSecret: config.appSecret,
+      }),
+    };
+    console.log(options);
+    request(options, function (error, response) {
+      let result = JSON.parse(response.body);
+      resolve(result);
+    });
+  });
+}
+
+module.exports = applyFabricToken;
+
+1.5 Download Demo
+
+    Node Js Demo Code Download
+
+    Python Demo Code Download
+
+    C# Demo Code Download
+
+    Jave Demo Code Download
+
+    PHP Demo Code Download
+
+    Auto Login Demo for MiniApp Download
+
+    B2B_WebCheckoutDemo Download
+
+    C2B_WebCheckoutDemo Download
+
+
+
+    InApp SDK IntegrationStep 2: Request Create Order
+
+Step 2: Request Create Order
+
+This API is used to create an order for the purchase of an item. It will return a prepay ID, which helps you checkout. To create an order, you must first obtain a token from the applyFabricToken method and set it in the header before you can place an order request.
+
+After creating the order, a receiveCode is ultimately returned to the front-end page, which then calls the Super App sdk's startPay to initiate the payment process.
+
+Note: You are advised to integrate backend services and provide APIs for your frontend applications.
+2.1 API Information
+
+    BaseURL: https://developerportal.ethiotelebirr.et:38443/apiaccess/payment/gateway
+    BaseURL(Production): https://superapp.ethiomobilemoney.et:38443/apiaccess/payment/gateway
+    Endpoint: /payment/v1/inapp/createOrder
+    Method: POST
+    Content-Type: application/json
+
+2.2 Request Parameters
+HEADER PARAMETERS
+Parameter	Data Type	M/O	Description
+X-APP-Key	String	M	Fabric App ID, provided by fabric portal of Ethio telecom (Get)
+Authorization	String	M	App Fabric Token for authentication
+REQUEST BODY SCHEMA
+Parameter	Data Type	M/O	Description
+timestamp	string(13)	M	<= 13 characters ^[0-9][1-9][0-9]$, Time when a request is sent. UTC timestamp. The unit is second.
+method	string	M	Value: "payment.preorder", Set to 'payment.preorder', fixed for this interface
+nonce_str	string(32)	M	<= 32 characters \S+, Random character string containing a maximum of 32 characters, including uppercase letters, lowercase letters, digits, but not special characters.
+sign_type	string	M	Value = "SHA256WithRSA", Signature type.
+sign	String(512)	M	<= 512 characters \S+, This signature is the sign of all the request parameters except the sign and sign_type. First ordered in alphabetical order and joined in a key=value format and joined together with '&' and are signed with the SHA256RSA algorithm. How to generate sign?
+version	String(4)	M	<= 4 characters \S+, Interface version number. Only support 1.0 now
+biz_content		M	object (CreateOrderBizContent)
+
+Request biz_content CreateOrderBizContent Object parameters
+Parameter	Data Type	M/O	Description
+notify_url	String(512)	M	<= 512 characters \S+,Specifies the callback address for receiving payment notifications if payment is successful.
+redirect_url	String(512)	O	<= 512 characters \S+,Indicates the callback address returned to the merchant after the payment is complete.
+appid	String(32)	M	Length <= 32 characters ^[A-Za-z0-9]* $,Application ID allocated to a merchant by Mobile Payment system.
+merch_code	String(16)	M	Length <= 16 characters ^[1-9][0-9]+$,Short code registered by a merchant with the Mobile Money.
+merch_order_id	String(64)	M	<= 64 characters ^[A-Za-z0-9]+$,The order number generated by the merchant side. It must be in the form of letters, numbers, and underscores. Other special characters are not allowed.
+trade_type	string	M	Trade type. The options are InApp, Cross-App, WebCheckout, PWA, QrCode, QuickPay, BankTrade. The enumeration values that can be used are related to service scenarios. You need to consult the platform.
+InApp: Payment initiated from the merchant HTML5 apps which are integrated into the consumer APP.
+Cross-App: Payment initiated from other stand-alone applications.
+Checkout: Payment initiated from a merchant webpage in browser, then redirect to checkout webpage of mobile payment system to pay the order.
+PWA: Payment initiated from a merchant webpage in browser, then pull out the consumer app checkout widget to pay the order.
+QrCode: A user uses the Payment consumer app to scan the merchant QR code for payment.
+QuickPay: The merchant scans the payment QR code of the Payment Consumer app using the QR code scanning device to complete the payment.
+BankTrade: Used to transfer funds from/to bank accounts.
+title	String(512)	M	Length <= 512 characters [^~`!#$%^*()\-+=
+total_amount	String(20)	M	<= 20 characters ^((0{1}.\d{1,2})
+trans_currency	String(3)	M	<= 3 characters \S+,Three-letter code complying with international standards, for example, USD.
+timeout_express	String(10)	M	Length <= 7 characters ^[1-9]\d{0,5}m$,Latest payment time allowed for an order. The transaction will be closed after the deadline. The value ranges from 1 minute to 120 minutes. The value of this parameter cannot contain dots. For example, the value 1.5 hours must be converted to 90 minutes. If this parameter is not set, 120 minutes is used by default.
+business_type	String(32)	M	<= 32 characters \S+,The enumeration values that can be used are related to service scenarios. You need to consult the platform. The optional value is "BuyGoods".
+payee_type	String	O	Identity type.,The optional value is "3000" denotes that The Identity type is Organization Operator.
+payee_identifier	String	O	Value = Merchant Code or Short Code.
+payee_identifier_type	String	O	What method the payment takes to reach the merchant.The optional Value "04" denotes that The merchant receives the money through short code.
+
+Request Example Value:
+
+{
+  "biz_content": {
+    "appid": "1072905731584000",
+    "business_type": "BuyGoods",
+    "merch_code": " 000000",
+    "merch_order_id": "201907161732001",
+    "notify_url": "http://test.payment.com/notify",
+    "redirect_url": "http://test.payment.com/redirect",
+    "timeout_express": "120m",
+    "title": "iphone1",
+    "total_amount": "12",
+    "trade_type": "Cross-App",
+    "trans_currency": "ETB"
+  },
+  "method": "payment.preorder",
+  "nonce_str": "fcab0d2949e64a69a212aa83eab6ee1d",
+  "sign": "JYyVqFAmdgBG4n1eBQYUwNlC...",
+  "sign_type": "SHA256WithRSA",
+  "timestamp": "1535166225",
+  "version": "1.0"
+}
+
+2.3 Response Parameters
+Parameter	Data Type	Description
+result	String	SUCCESS or FAIL. When this field is FAIL, the code field is a specific business error code.
+code	String	Return code. 0 is successful, the rest is the business error code
+msg	String	Return information, simple error description.
+sign	String(512)	<= 512 characters,Response signature.Signed by the privatekey of the SP
+nonce_str	String(32)	<= 32 characters,Random character string. 32 characters or fewer.
+sign_type	String	Value: "SHA256WithRSA",Signature type.
+biz_content	Object	object (CreateOrderResponseInfo)
+
+Response biz_content CreateOrderResponseInfo Object parameters
+Parameter	Data Type	Description
+merch_order_id	String(64)	<= 64 characters ^[A-Za-z0-9]+$, Order ID on the merchant side.When return_code is SUCCESS, this value will return
+prepay_id	String(128)	<= 128 characters ^[A-Za-z0-9]+$, ID of the customer payment process. When return_code is SUCCESS, this value will return
+receiveCode	String	Response concatenated data, "TELEBIRR$BUYGOODS$merch_code$total_amount $prepay_id$timeout_express"
+
+Response Example Value:
+
+{
+  "result": "SUCCESS",
+  "code": "0",
+  "msg": "success",
+  "nonce_str": "97fe4ae0c0604854a749fbf2cc1cc712",
+  "sign": "Eo4Bvwx9rpaWAO+iYzaaXHoWBWbYcCGnVZMEcG5TPb8w...",
+  "sign_type": "SHA256WithRSA",
+  "biz_content": {
+    "merch_order_id": "1705460512562",
+    "receiveCode": "TELEBIRR$BUYGOODS$100100306$12.00$080075a4e3213924de2b3b84ad3cac0a6a6001$120m"
+  }
+}
+
+2.4 Create apply Request Create Order service
+
+Create a file at ..\service\config.js:
+..\service\config.js
+
+  module.exports = {
+    baseUrl: "https://xxx:38443/apiaccess/payment/gateway",
+    fabricAppId: "your X-APP-Key",
+    appSecret: "your appSecret",
+    merchantAppId: "your merchantAppId",
+    merchantCode: "your merchantCode",
+  };
+
+Create a file at API\service\requestCreateOrderService.js:
+API\service\requestCreateOrder.js
+
+const applyFabricToken = require("./applyFabricTokenService");
+const tools = require("../utils/tools");
+const config = require("../config/config");
+const https = require("http");
+var request = require("request");
+
+exports.createOrder = async (req, res) => {
+  let title = req.body.title;
+  let amount = req.body.amount;
+  let applyFabricTokenResult = await applyFabricToken();
+  let fabricToken = applyFabricTokenResult.token;
+  let createOrderResult = await exports.requestCreateOrder(
+    fabricToken,
+    title,
+    amount
+  );
+  console.log(createOrderResult);
+  let prepayId = createOrderResult.biz_content.prepay_id;
+  let rawRequest = createRawRequest(prepayId);
+  res.send(rawRequest);
+};
+
+exports.requestCreateOrder = async (fabricToken, title, amount) => {
+  return new Promise((resolve) => {
+    let reqObject = createRequestObject(title, amount);
+
+    var options = {
+      method: "POST",
+      url: config.baseUrl + "/payment/v1/merchant/inapp/createOrder",
+      headers: {
+        "Content-Type": "application/json",
+        "X-APP-Key": config.fabricAppId,
+        Authorization: fabricToken,
+      },
+      rejectUnauthorized: false, //add when working with https sites
+      requestCert: false, //add when working with https sites
+      agent: false, //add when working with https sites
+      body: JSON.stringify(reqObject),
+    };
+
+    request(options, (error, response) => {
+      if (error) throw new Error(error);
+      let result = JSON.parse(response.body);
+      resolve(result);
+    });
+  });
+};
+
+function createRequestObject(title, amount) {
+  let req = {
+    timestamp: tools.createTimeStamp(),
+    nonce_str: tools.createNonceStr(),
+    method: "payment.preorder",
+    version: "1.0",
+  };
+  let biz = {
+    notify_url: "your notify api url", //When the payment is completed, the payment callback result is sent to this URL.
+    trade_type: "InApp",
+    appid: config.merchantAppId,
+    merch_code: config.merchantCode,
+    merch_order_id: createMerchantOrderId(),
+    title: title,
+    business_type: "BuyGoods",
+    total_amount: amount,
+    trans_currency: "ETB",
+    timeout_express: "120m",
+    payee_identifier: config.merchantCode,
+    payee_identifier_type: "04",
+    payee_type: "3000",
+    redirect_url: "https://www.bing.com",
+  };
+  req.biz_content = biz;
+  req.sign = tools.signRequestObject(req);  // tools code you can download form demo
+  req.sign_type = "SHA256WithRSA";
+  console.log(req);
+  return req;
+}
+
+function createMerchantOrderId() {
+  return new Date().getTime() + "";
+}
+
+function createRawRequest(prepayId) {
+  let map = {
+    appid: config.merchantAppId,
+    merch_code: config.merchantCode,
+    nonce_str: tools.createNonceStr(),  // tools code you can download form demo
+    prepay_id: prepayId,
+    timestamp: tools.createTimeStamp(),  // tools code you can download form demo
+  };
+  let sign = tools.signRequestObject(map);  // tools code you can download form demo
+  let rawRequest = [
+    "appid=" + map.appid,
+    "merch_code=" + map.merch_code,
+    "nonce_str=" + map.nonce_str,
+    "prepay_id=" + map.prepay_id,
+    "timestamp=" + map.timestamp,
+    "sign=" + sign,
+    "sign_type=SHA256WithRSA",
+  ].join("&");
+  return rawRequest;
+}
+
+module.exports = createOrder;
+
+Note: ../utils/tools.js you can get from Demo code
+Example HTTP Response (405: Error)
+
+{
+  "errorCode": "string",
+  "errorMsg": "string"
+}
+
+
+
+    InApp SDK IntegrationStep 3: Start Pay Order
+
+Step 3: Start Pay Order
+
+In the steps of creating an order, the front-end App has already obtained the receive code receiveCode information from the front-end order creation interface. Next, the merchant app only needs to call the startPay API in the super app SDK, passing in the receiveCode, appId, and shortCode parameters to launch the Telebirr super app and enter the password to initiate the payment process. Below is an example of the API call.
+3.1 Call the create order interface
+
+The front-end page calls the back-end create order API to retrieve order information. rawRequest.
+Create Order
+
+
+    const title = "add your own title here"; // Replace with your desired title
+    const amount = "add your own amount here"; // Replace with your desired amount
+
+    function createOrder() {
+     
+        if (!amount) {
+            return;
+        }
+        // call your backend create order api
+        window.fetch(baseUrl + "/create/order", {
+                method: "post",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    title: title,
+                    amount: amount,
+                }),
+            })
+            .then((res) => {
+                res.text()
+                .then((receiveCode) => {
+                    // call telebirr super app api to check out
+                    this.startPay(receiveCode)
+                })
+                .catch((error) => {
+                console.log("error occur", error);
+                })
+                .finally(() => {});
+            });
+        }
+
+3.2 Start Pay Parameters
+Parameter	Data Type	M/O	Description
+appid	String(32)	M	Length <= 32 characters ^[A-Za-z0-9]* $,Application ID allocated to a merchant by Mobile Payment system.
+shortCode	String(16)	M	Length <= 16 characters ^[1-9][0-9]+$,Short code registered by a merchant with the Mobile Money.
+receiveCode	String	M	Response concatenated data, "TELEBIRR$BUYGOODS$merch_code$total_amount $prepay_id$timeout_express"
+returnApp	String	O	Ofter payment return your app page Data demo json String for returnApp
+{
+"activity": " activity page path",
+"packageName": "return package name"
+}
+3.3 Start Pay With Android SDK
+For testbed environment EthiopiaPaySdkModule-uat-release.aar
+For production environment EthiopiaPaySdkModule-prod-release.aar
+
+After obtaining the receiveCode, initiate the checkout process.
+Start Pay
+
+
+
+function startPay(receiveCode){
+  final PayInfo payInfo = new PayInfo.Builder()
+    .setAppId(appId)
+    .setShortCode(shortCode)
+    .setReceiveCode(receiveCode)
+    .setReturnApp(returnApp)
+    .build();
+PaymentManager.getInstance().pay(this, payInfo);
+}
+
+Click to view detailed integration steps >
+3.4 Start Pay With IOS SDK
+For testbed and production environment EthiopiaPaySdkModule-release.aar
+
+After obtaining the receiveCode, initiate the checkout process.
+
+B2B Integration Process
+
+Click to view detailed integration steps >
+
+
+
+    InApp SDK IntegrationStep 4: Backend API Notify
+
+Step 4: Backend API Notify
+
+After the completion of the payment on the SuperApp, the payment notification (callback) will be sent to the end point that you passed on the createOrder request notify_url parameter in a post method. This endpoint must be whitelisted and configured on the SuperApp server in order to be sent properly. Here is a sample of the payment notification(callback)
+
+Note: Please ensure that your Notify API includes the following fields to guarantee the proper reception of callback information.
+Example HTTP Response (200: Processed successful)
+
+{
+   notify_url: 'http://197.156.68.29:5050/v2/api/order-v2/mini/payment',
+   appid: '853694808089634',
+   notify_time: '1670575472482',
+   merch_code: '245445',
+   merch_order_id: '1670575560882',
+   payment_order_id: '00801104C911443200001002',
+   total_amount: '10.00',
+   "trans_id":"49485948475845",
+   trans_currency: 'ETB',
+   trade_status: 'Completed',
+   trans_end_time: '1670575472000',
+   sign: 'AOwWQF0QDg0jzzs5otLYOunoR65GGgC3hyr+oYn8mm1Qph6Een7C…',
+   sign_type: 'SHA256WithRSA'
+}
+
+REQUEST BODY SCHEMA
+Parameter	Data Type	M/O	Description
+notify_url	String(512)	O	<= 512 characters \S+, Specifies the callback address for receiving payment notifications if payment is successful.
+appid	String(32)	O	Length <= 32 characters ^[A-Za-z0-9]* $, Application ID allocated to a merchant by Mobile Payment system.
+notify_time	string	O	string <= 13 characters ^[0-9][1-9][0-9]$, Notification sending time. The timestamp is of the long type. The time is the UTC format. The unit is second.
+merch_code	String(16)	O	Length <= 16 characters ^[1-9][0-9]+$, Short code registered by a merchant with the Mobile Money.
+merch_order_id	String(64)	M	<= 64 characters ^[A-Za-z0-9]+$, Order ID on the merchant side.
+payment_order_id	String(64)	M	string <= 64 characters, Order ID on the Payment side.
+total_amount	String(20)	O	<= 20 characters ^((0{1}.\d{1,2})
+trans_currency	String(3)	O	<= 3 characters \S+, Transaction currency type.
+trade_status	String(4)	M	<= 4 characters \S+, String Transaction status.
+Paying: The user has paid, but the cards and coupons and other transactions have been agreed paid.
+Expired:The status after reconciliation is not obvious.
+Pending:Payment completed, awaiting order synchronization.
+Completed: Payment Completed.
+Failure: Payment failed
+trans_end_time	String	M	<= 13 characters ^[0-9][1-9][0-9]$, Time when a transaction ends. The unit is second.
+callback_info	String	O	Callback information. If this parameter is transferred when a merchant places an order, the parameter is returned to the merchant during asynchronous notification.
+sign	String(512)	M	<= 512 characters \S+, Response signature.
+sign_type	string	M	Value = "SHA256WithRSA", Signature type of the response
+
+
+    InApp SDK IntegrationAndroid InApp SDK Integration
+
+Android InApp SDK Integration
+Download Android SDK Integration DEMO Android SDK DEMO
+
+Currently, the SDK supports only the local AAR dependency mode
+Android InApp SDK Integration to a payment originating form Merchant’s mobile app.
+
+Quick Steps:
+1. Download the EthiopiaPaySdkModule to the project app
+for testbed environment EthiopiaPaySdkModule-uat-release.aar
+for production environment EthiopiaPaySdkModule-prod-release.aar
+2. Create a new libs folder in the project app (or other submodules), and copy the EthiopiaPaySdkModule-uat-release.aar file to the folder:
+
+B2B Integration Process
+3 Import the telebirr SDK dependency for the project by referring to the following sections.
+4. Add the following dependency to the build.gradle file:
+
+dependencies {
+implementation files(' libs/EthiopiaPaySdkModule-uat-release.aar')
+}
+
+5. Running permission.
+
+To ensure a good payment process experience, the telebirr SDK requires the following permissions:
+
+android.permission.INTERNET
+// Developers need to configure the preceding permission in AndroidManifest.
+// The telebirr SDK needs to be connected to the network during running.
+
+6. Obtain the authorization token and pre-order interface.
+
+Invoke the payment interface in the new thread to obtain the accessToken and receiveCode.
+
+https://host:38443/apiaccess/payment/gateway/payment/v1/token https://host:38443/apiaccess/payment/gateway/payment/v1/inapp/createOrder
+
+Create order response:
+
+{
+    "result": "SUCCESS",
+    "code": "0",
+    "msg": "success",
+    "nonce_str": "97fe4ae0c0604854a749fbf2cc1cc712",
+    "sign": "Eo4Bvwx9rpaWAO+iYzaaXHoWBWbYcCGnVZMEcG5TPb8w...",
+    "sign_type": "SHA256WithRSA",
+    "biz_content": {
+    "merch_order_id": "1705460512562",
+    "prepay_id": "080075a4e3213924de2b3b84ad3cac0a6a6001",
+    "receiveCode": "TELEBIRR$BUYGOODS$100100306$12.00$080075a4e3213924de2b3b84ad3cac0a6a6001$120m"
+}
+
+7. Then invoke the SDK API to start the payment.
+
+final PayInfo payInfo = new PayInfo.Builder()
+    .setAppId(appId)
+    .setShortCode(shortCode)
+    .setReceiveCode(receiveCode)
+    .setReturnApp(returnApp)
+    .build();
+PaymentManager.getInstance().pay(this, payInfo);
+
+Input Parameter
+Parameter Name	Parameter Description
+appId	AppId of the merchant transferred during payment.
+shortCode	ShortCode of the merchant transferred during payment.
+receiveCode	ReceiveCode returned during pre-order placement, which is mandatory.
+returnApp	Ofter payment return your app page Data demo json String for returnApp
+{
+"activity": " activity page path",
+"packageName": "return package name"
+}
+8. Listen to the payment callback.
+
+PaymentManager.getInstance().setPayCallback(new PayCallback() {
+
+    @Override
+    public void onPayCallback(int code, String errMsg) {
+        Log.d(TAG, "onPayCallback: code "+ code +" errMsg " + errMsg);
+        Toast.makeText(App.this, code + errMsg, Toast.LENGTH_SHORT).show();
+    }
+});
+
+9. Error Code Description
+Error Code Description
+Error Code	Description
+-1	Unknown error.
+-2	Parameter error.
+-3	Cancellation of payment
+-10	The Payment is not installed.
+-11	The current version of the Payment does not support this function.
+10. Add Obfuscation Rule
+
+keep class com.huawei.ethiopia.pay.sdk.api.core.** {*;}
+Check the demo for detailed implementation of the integration EthiopiaSDK-develop_demo
+
+
+    InApp SDK IntegrationStep 5: queryOrder
+
+Step 5: queryOrder
+
+The Query Order interface can be used to query a payment in the event of an unsuccessful payment notification.
+
+Note: You are advised to integrate backend services and provide APIs for your frontend applications.
+5.1 API Information
+
+    BaseURL: https://developerportal.ethiotelebirr.et:38443/apiaccess/payment/gateway
+    BaseURL(Production): https://superapp.ethiomobilemoney.et:38443/apiaccess/payment/gateway
+    Endpoint: /payment/v1/merchant/queryOrder
+    Method: POST
+    Content-Type: application/json
+
+5.2 Request Parameters
+HEADER PARAMETERS
+Parameter	Data Type	M/O	Description
+X-APP-Key	String	M	Fabric App ID, provided by fabric portal of Ethio telecom (Get)
+Authorization	String	M	App Fabric Token for authentication
+REQUEST BODY SCHEMA
+Parameter	Data Type	M/O	Description
+timestamp	String	M	string <= 13 characters ^[0-9][1-9][0-9]$, Time when a request is sent. UTC timestamp. The unit is second.
+method	String	M	string Value: "payment.queryorder" Set to 'payment.queryorder', fixed for this interface
+nonce_str	String	M	<= 32 characters \S+, Random character string containing a maximum of 32 characters, including uppercase letters, lowercase letters, digits, but not special characters.
+sign_type	String	M	Value: "SHA256WithRSA", Signature type.
+sign	String	M	<= 512 characters \S+, This signature is the sign of all the request parameters except the sign and sign_type. First ordered in alphabetical order and joined in a key=value format and joined together with '&' and are signed with the SHA256RSA algorithm.
+version	String	M	<= 4 characters \S+, Interface version number. Only support 1.0 now
+biz_content	Object	M	object (QueryOrderBizContent)
+
+Request biz_content QueryOrderBizContent Object parameters
+Parameter	Data Type	M/O	Description
+appid	String	M	example: "12312b84664d44679693855d82a291" " Application ID allocated to a merchant by Mobile Payment system." maxLength: 32 pattern: "^[A-Za-z0-9]+$"
+merch_code	String	M	example: "200001" "Short code registered by a merchant with the Mobile Money." maxLength: 16 pattern: "^[A-Za-z0-9]+$"
+merch_order_id	String	M	example: "201907161732001" "The order number generated by the merchant side. It must be in the form of letters, numbers, and underscores. Other special characters are not allowed." maxLength: 64 pattern: "^[A-Za-z0-9]+$"
+5.3 Response Parameters
+Parameter	Data Type	Description
+result	String	SUCCESS or FAIL. When this field is FAIL, the code field is a specific business error code.
+code	String	Return code. 0 is successful, the rest is the business error code
+msg	String	Return information, simple error description.
+sign	String(512)	<= 512 characters,Response signature.Signed by the privatekey of the SP
+nonce_str	String(32)	<= 32 characters,Random character string. 32 characters or fewer.
+sign_type	String	Value: "SHA256WithRSA",Signature type.
+biz_content	Object	object (QueryOrderResponseInfo)
+
+Response biz_content QueryOrderResponseInfo Object parameters
+Parameter	Data Type	M/O	Description
+merch_order_id	String	M	<= 64 characters ^[A-Za-z0-9]+$,Order ID on the merchant side.When return_code is SUCCESS, this value will return
+order_status	String	M	<= 3 characters \S+, Transaction currency type.
+trade_status	String(4)	M	characters \S+, String Transaction status.
+PAY_SUCCESS:Payment success
+PAY_FAILED:The order already expired or payment failed.
+WAIT_PAY: Waiting for Payment.
+ORDER_CLOSED: pre order and then the order closed.
+PAYING: the order waiting wallet notify to refresh status.
+ACCEPTED: Refund Accepted.
+REFUNDING: Refund in Progress.
+REFUND_SUCCESS: Refund Successful
+REFUND_FAILED: Refund Failed
+payment_order_id	String	M	Payment order id of the customer payment process.When return_code is SUCCESS, this value will return
+trans_time	String	M	
+trans_currency	String	M	Three-letter code complying with international standards, for example, ETB.
+total_amount	String	M	Total order amount. The value can contain two decimal places at most.
+
+Response Example Value:
+
+{
+    "result": "SUCCESS",
+    "code": "0",
+    "msg": "success",
+    "nonce_str": "b93f8165b83e46a9abea4aaa7dc173a8",
+    "sign": "dmeUb5r9PF9aBy6/1D54XjELYbKcCzGF6e1yxOA4/WIy1on0TpyD.....",
+    "sign_type": "SHA256WithRSA",
+    "biz_content": {
+        "merch_order_id": "G32QWMKYLZQJ",
+        "order_status": "PAY_SUCCESS",
+        "payment_order_id": "11801107AD19191408215009",
+        "trans_time": "2025-10-13 19:19:38",
+        "trans_currency": "ETB",
+        "total_amount": "1260.00",
+        "trans_id": "CJD7GBOXIP"
+    }
+}
+
+
+
+
+
+
+
+

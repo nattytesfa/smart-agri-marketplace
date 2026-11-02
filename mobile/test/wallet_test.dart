@@ -150,8 +150,10 @@ void main() {
     final api = FakeWallet('buyer');
     await tester.pumpWidget(MaterialApp(home: WalletScreen(api: api)));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Add Demo Funds'));
-    await tester.tap(find.text('Add Demo Funds'));
+    await tester.ensureVisible(find.text('Add Funds'));
+    await tester.tap(find.text('Add Funds'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Instant Demo Top-up'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Review'));
     await tester.pumpAndSettle();
